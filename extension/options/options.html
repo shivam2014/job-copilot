@@ -34,8 +34,10 @@
         </div>
         <div class="field">
           <label>Model</label>
-          <input type="text" id="llm_model" list="model-list" placeholder="deepseek-v4-flash-2">
-          <datalist id="model-list"></datalist>
+          <div class="model-wrap">
+            <input type="text" id="llm_model" placeholder="deepseek-v4-flash-2" autocomplete="off">
+            <div class="model-dropdown" id="model-dropdown"></div>
+          </div>
         </div>
       </div>
     </section>

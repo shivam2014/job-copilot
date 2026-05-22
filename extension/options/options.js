@@ -252,14 +252,29 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
       return;
     }
 
-    const list = document.getElementById('model-list');
-    list.innerHTML = models
-      .filter(m => m.id && !m.id.includes('.')) // Filter out non-model entries
-      .slice(0, 30) // Cap at 30
-      .map(m => `<option value="${m.id}">`)
-      .join('');
+    const dropdown = document.getElementById('model-dropdown');
+    const modelList = models
+      .filter(m => m.id && !m.id.includes('.'))
+      .slice(0, 30);
 
-    hint.textContent = `${Math.min(models.length, 30)} model(s) loaded — click to select or type custom`;
+    dropdown.innerHTML = modelList.map(m => 
+      `<div class="md-item" data-model="${m.id}">${m.id}</div>`
+    ).join('') + 
+      `<div class="md-divider"></div>
+       <div class="md-custom">Type a custom model name above</div>`;
+
+    // Click handler for dropdown items
+    dropdown.querySelectorAll('.md-item').forEach(el => {
+      el.addEventListener('click', () => {
+        document.getElementById('llm_model').value = el.dataset.model;
+        dropdown.classList.remove('open');
+      });
+    });
+
+    // Show dropdown
+    dropdown.classList.add('open');
+
+    hint.textContent = `${modelList.length} model(s) loaded — click to select or type custom`;
     hint.className = 'field-hint success';
   } catch (err) {
     hint.textContent = `Could not reach endpoint: ${err.message}`;
@@ -271,3 +286,19 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
 // Reset fetch flag when URL or key changes
 document.getElementById('llm_base_url').addEventListener('change', () => { modelsFetched = false; });
 document.getElementById('llm_api_key').addEventListener('change', () => { modelsFetched = false; });
+
+// Close model dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.model-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('model-dropdown').classList.remove('open');
+  }
+});
+
+// Reopen dropdown on focus (if models already loaded)
+document.getElementById('llm_model').addEventListener('focus', () => {
+  const dropdown = document.getElementById('model-dropdown');
+  if (dropdown.children.length > 0) {
+    dropdown.classList.add('open');
+  }
+});
