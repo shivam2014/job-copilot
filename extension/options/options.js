@@ -134,7 +134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (start === -1) throw new Error('Unbalanced JSON');
       var jsonStr = raw.slice(start, end + 1);
       const profile = JSON.parse(jsonStr);
-      const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization', profile_summary: 'summary' };
+      const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
       // Store full resume data for AI context
       var fullData = { extractedFields: {}, rawSections: {} };
       for (var k in profile) { if (typeof profile[k] === 'object' || Array.isArray(profile[k])) { fullData.rawSections[k] = profile[k]; } else { fullData.extractedFields[k] = profile[k]; } }
@@ -158,10 +158,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       for (const [id, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
         if (profile[key] && profile[key].trim()) { el.value = profile[key].trim(); filled++; }
-      if (key === 'summary') { var rs = document.getElementById('rd_summary'); if (rs && profile.summary) rs.value = profile.summary; }
+
       }
       // Save full resume data for AI context
       try { chrome.storage.sync.set({ resume_full_data: JSON.stringify(fullData) }); } catch(e) {}
+      // Populate summary separately
+      if (profile.summary) {
+        var rs = document.getElementById('rd_summary');
+        if (rs) { rs.value = profile.summary; filled++; }
+      }
       // Auto-save extracted profile
       if (typeof debouncedSave === 'function') debouncedSave();
       statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
