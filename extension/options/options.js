@@ -80,8 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     uploadStatus.style.display = 'block';
     uploadStatus.className = 'upload-status ' + type;
     uploadStatus.textContent = msg;
-    // Show clear button on success/error
-    document.getElementById('clear-btn').style.display = 'block';
+    
   }
 
   // Clear all: reset form, clear storage, remove resume data
