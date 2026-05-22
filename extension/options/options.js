@@ -93,7 +93,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btn = document.getElementById('extract-btn');
 
     if (!baseUrl) { statusEl.textContent = 'Enter an API Base URL first'; statusEl.className = 'field-hint error'; return; }
-    if (!model) { statusEl.textContent = 'Select a model first (click the Model field)'; statusEl.className = 'field-hint error'; return; }
+    if (!model) {
+      statusEl.textContent = 'Select a model first (click the Model field)';
+      statusEl.className = 'field-hint error';
+      // Store text for retry when model is selected
+      document.getElementById('extract-btn').dataset.pendingText = resumeText;
+      if (sourceLabel) document.getElementById('extract-btn').dataset.pendingLabel = sourceLabel;
+      return;
+    }
 
     // Disable button during extraction
     btn.disabled = true;
@@ -1097,6 +1104,19 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
         document.getElementById('llm_model').value = el.dataset.model;
         dropdown.classList.remove('open');
         testConnection();
+        // Auto-retry pending extraction after model selection
+        var btn = document.getElementById('extract-btn');
+        var pending = btn.dataset.pendingText;
+        if (pending) {
+          var label = btn.dataset.pendingLabel || null;
+          delete btn.dataset.pendingText;
+          delete btn.dataset.pendingLabel;
+          runExtraction(pending, label);
+        } else {
+          // Also check textarea (manual paste case)
+          var ta = document.getElementById('resume_text').value.trim();
+          if (ta) runExtraction(ta, null);
+        }
       });
     });
 
