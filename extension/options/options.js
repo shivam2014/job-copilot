@@ -130,6 +130,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const el = document.getElementById(id);
         if (profile[key] && profile[key].trim()) { el.value = profile[key].trim(); filled++; }
       }
+      // Auto-save extracted profile
+      if (typeof debouncedSave === 'function') debouncedSave();
       statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
       statusEl.className = 'field-hint success';
       if (sourceLabel) {
