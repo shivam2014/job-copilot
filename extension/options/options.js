@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     extractAbort = new AbortController();
 
     try {
-      const prompt = 'Extract full resume data as JSON. Include: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills (array), experience (array of {company, title, start_date, end_date, description}), education (array of {school, degree, start_date, end_date}), languages (array of {name, level}), publications (array), projects (array of {name, description}). Use empty string for missing values. No null. Arrays can be empty. JSON only.';
+      const prompt = 'Extract full resume data as JSON. Include: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills (array), experience (array of {company, title, start_date, end_date, description}), education (array of {school, degree, field, start_date, end_date}), languages (array of {name, level}), publications (array), projects (array of {name, description}). Use empty string for missing values. No null. Arrays can be empty. JSON only.';
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
@@ -470,6 +470,7 @@ document.getElementById('rd-edu-save').onclick = function() {
   if (!data.rawSections) data.rawSections = {};
   if (!data.rawSections.education) data.rawSections.education = [];
   var degree = document.getElementById('rd-edu-degree').value.trim();
+  var field = document.getElementById('rd-edu-field').value.trim();
   var school = document.getElementById('rd-edu-school').value.trim();
   var startM = document.getElementById('rd-edu-start').value.trim();
   var startY = document.getElementById('rd-edu-start-y').value.trim();
@@ -480,12 +481,13 @@ document.getElementById('rd-edu-save').onclick = function() {
   if (!degree && !school) return;
     var editIdx = document.getElementById('rd-edu-form').dataset.editIndex;
   if (editIdx !== undefined && data.rawSections.education[editIdx]) {
-    data.rawSections.education[editIdx] = { degree: degree, school: school, start_date: start, end_date: end };
+    data.rawSections.education[editIdx] = { degree: degree, field: field, school: school, start_date: start, end_date: end };
     delete document.getElementById('rd-edu-form').dataset.editIndex;
   } else {
-    data.rawSections.education.push({ degree: degree, school: school, start_date: start, end_date: end });
+    data.rawSections.education.push({ degree: degree, field: field, school: school, start_date: start, end_date: end });
   }
   document.getElementById('rd-edu-degree').value = '';
+  document.getElementById('rd-edu-field').value = '';
   document.getElementById('rd-edu-school').value = '';
   document.getElementById('rd-edu-start').value = '';
   document.getElementById('rd-edu-start-y').value = '';
@@ -525,6 +527,7 @@ document.addEventListener('click', function(e) {
       document.getElementById('rd-exp-save').textContent = 'Update';
     } else if (list === 'education') {
       document.getElementById('rd-edu-degree').value = item.degree || '';
+      document.getElementById('rd-edu-field').value = item.field || '';
       document.getElementById('rd-edu-school').value = item.school || '';
       var parts = (item.start_date || '').split('/');
       document.getElementById('rd-edu-start').value = parts[0] || '';
@@ -626,6 +629,7 @@ function renderEditableLists(data) {
       html += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';  // flex wrapper
       html += '<div style="flex:1">';  // content left
       if (item.degree) html += '<div class="rd-card-title">' + escHtml(item.degree) + '</div>';
+      if (item.field) html += '<div class="rd-card-sub">' + escHtml(item.field) + '</div>';
       if (item.school) html += '<div class="rd-card-sub">' + escHtml(item.school) + '</div>';
       if (item.start_date || item.end_date) {
             var sd = item.start_date || '';
