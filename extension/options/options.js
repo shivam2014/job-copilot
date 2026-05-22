@@ -112,12 +112,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     extractAbort = new AbortController();
 
     try {
-      const prompt = 'You are a resume parser. Output ONLY valid JSON with these fields. No thinking, no markdown, no backticks, no explanations. JSON must start with { and end with }. Fields: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills[], experience[{title,company,start_date,end_date,description}], education[{school,degree,field,start_date,end_date}], languages[{name,level}], projects[{name,description}], publications[]. Empty string if missing. No null.';
+      const prompt = 'JSON only from resume: name,email,phone,linkedin,github,website,address,work_authorization,summary,skills[],experience[{title,company,start_date,end_date,description}],education[{school,degree,field,start_date,end_date}],languages[{name,level}],projects[{name,description}],publications[]. Start with {. End with }. No null.';
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 3000) }], temperature: 0.01, max_tokens: 16000 }),
+        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 3000) }], temperature: 0.01, max_tokens: 32000 }),
       });
       if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(function() { return resp.statusText; })));
       const data = await resp.json();
