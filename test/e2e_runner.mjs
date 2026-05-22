@@ -114,7 +114,7 @@ async function main() {
         const p = await context.newPage();
         await p.goto(`chrome-extension://${extId}/options/options.html`);
         
-        const fields = ['profile_name', 'profile_email', 'profile_phone', 'profile_linkedin', 'profile_github', 'profile_address'];
+        const fields = ['profile_name', 'profile_email', 'profile_phone', 'profile_linkedin', 'profile_github', 'profile_address', 'profile_skills', 'profile_languages', 'profile_summary'];
         for (const id of fields) {
           await p.fill(`#${id}`, 'test-value');
           const val = await p.$eval(`#${id}`, el => el.value);

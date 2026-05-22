@@ -48,7 +48,7 @@ const required = [
   'upload-area', 'model-dropdown', 'model-count',
   'profile_name', 'profile_email', 'profile_phone',
   'profile_linkedin', 'profile_github', 'profile_website',
-  'profile_address', 'profile_work_authorization',
+  'profile_address', 'profile_work_authorization', 'profile_skills', 'profile_languages', 'profile_summary',
   'saved-answers-list', 'token-usage-content',
   'show-paste-link', 'reset-tokens-btn',
 ];

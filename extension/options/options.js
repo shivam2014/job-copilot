@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'llm_base_url', 'llm_api_key', 'llm_model',
     'profile_name', 'profile_email', 'profile_phone',
     'profile_linkedin', 'profile_github', 'profile_website',
-    'profile_address', 'profile_work_authorization', 'profile_summary',
+    'profile_address', 'profile_work_authorization', 'profile_skills', 'profile_languages', 'profile_summary',
     'resume_text',
   ];
   fields.forEach(f => {
@@ -376,12 +376,12 @@ function updateFromEditors() {
   if (!data.rawSections) data.rawSections = {};
   if (!data.extractedFields) data.extractedFields = {};
   
-  // Skills
-  var skillsVal = document.getElementById('rd_skills').value.trim();
+  // Skills (from profile section)
+  var skillsVal = document.getElementById('profile_skills') ? document.getElementById('profile_skills').value.trim() : '';
   data.rawSections.skills = skillsVal ? skillsVal.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; }) : [];
   
-  // Languages
-  var langsVal = document.getElementById('rd_languages').value.trim();
+  // Languages (from profile section)
+  var langsVal = document.getElementById('profile_languages') ? document.getElementById('profile_languages').value.trim() : '';
   data.rawSections.languages = langsVal ? langsVal.split(',').map(function(l) { return l.trim(); }).filter(function(l) { return l; }) : [];
   
   document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
@@ -524,18 +524,20 @@ function renderEditableLists(data) {
     }).join('');
   }
   
-  // Skills input
-  var skillsInput = document.getElementById('rd_skills');
+  // Skills input (profile section)
+  var skillsInput = document.getElementById('profile_skills');
   if (skillsInput && sections.skills) skillsInput.value = sections.skills.join(', ');
   
-  // Languages input
-  var langsInput = document.getElementById('rd_languages');
+  // Languages input (profile section)
+  var langsInput = document.getElementById('profile_languages');
   if (langsInput && sections.languages) langsInput.value = sections.languages.join(', ');
 }
 
 // Auto-save when skills/languages change
-document.getElementById('rd_skills').addEventListener('input', updateFromEditors);
-document.getElementById('rd_languages').addEventListener('input', updateFromEditors);
+var skillsInput = document.getElementById('profile_skills') || document.getElementById('rd_skills');
+  if (skillsInput) skillsInput.addEventListener('input', updateFromEditors);
+var langsInput = document.getElementById('profile_languages') || document.getElementById('rd_languages');
+  if (langsInput) langsInput.addEventListener('input', updateFromEditors);
 document.getElementById('rd-json-editor').addEventListener('input', function() {
   saveResumeDataDebounced();
 });
