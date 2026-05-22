@@ -195,6 +195,36 @@
       </div>
       <button id="rd-edu-show-form" class="btn btn-sm" style="margin-top:4px;width:100%;padding:8px;border:1px dashed #d1d5db;background:white;color:#6b7280">+ Add Education</button>
 
+      <!-- Projects cards -->
+      <div class="rd-section-label" style="margin-top:16px">Projects</div>
+      <div id="rd-projects-list" class="rd-card-list"></div>
+      <div class="rd-add-card" id="rd-proj-form" style="display:none">
+        <div class="rd-card">
+          <div class="rd-card-field"><label>Project Name</label><input type="text" id="rd-proj-name" placeholder="e.g. mlx-lm inference engine"></div>
+          <div class="rd-card-field"><label>Description</label><textarea id="rd-proj-desc" rows="2" placeholder="Key achievements..."></textarea></div>
+          <div class="rd-card-actions">
+            <button id="rd-proj-save" class="btn btn-sm btn-accent" style="padding:6px 14px;font-size:12px">Save Project</button>
+            <button id="rd-proj-cancel" class="btn btn-sm" style="padding:6px 14px;font-size:12px">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <button id="rd-proj-show-form" class="btn btn-sm" style="margin-top:4px;width:100%;padding:8px;border:1px dashed #d1d5db;background:white;color:#6b7280">+ Add Project</button>
+
+      <!-- Publications cards -->
+      <div class="rd-section-label" style="margin-top:16px">Publications</div>
+      <div id="rd-publications-list" class="rd-card-list"></div>
+      <div class="rd-add-card" id="rd-pub-form" style="display:none">
+        <div class="rd-card">
+          <div class="rd-card-field"><label>Publication Title</label><input type="text" id="rd-pub-title" placeholder="e.g. Flying Car: CycloTech Presents..."></div>
+          <div class="rd-card-field"><label>URL (optional)</label><input type="url" id="rd-pub-url" placeholder="https://..."></div>
+          <div class="rd-card-actions">
+            <button id="rd-pub-save" class="btn btn-sm btn-accent" style="padding:6px 14px;font-size:12px">Save Publication</button>
+            <button id="rd-pub-cancel" class="btn btn-sm" style="padding:6px 14px;font-size:12px">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <button id="rd-pub-show-form" class="btn btn-sm" style="margin-top:4px;width:100%;padding:8px;border:1px dashed #d1d5db;background:white;color:#6b7280">+ Add Publication</button>
+
       <!-- Read-only display + raw JSON editor -->
       <div id="resume-data-content" style="margin-bottom:8px">
         <p class="empty-state">Extract your resume to see structured data here.</p>

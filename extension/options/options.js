@@ -500,6 +500,62 @@ document.getElementById('rd-edu-cancel').onclick = function() {
   document.getElementById('rd-edu-show-form').style.display = 'block';
 };
 
+// --- Projects ---
+document.getElementById('rd-proj-show-form').onclick = function() {
+  document.getElementById('rd-proj-form').style.display = 'block'; this.style.display = 'none';
+};
+document.getElementById('rd-proj-cancel').onclick = function() {
+  document.getElementById('rd-proj-form').style.display = 'none'; document.getElementById('rd-proj-show-form').style.display = 'block';
+};
+document.getElementById('rd-proj-save').onclick = function() {
+  var data = getResumeData();
+  if (!data.rawSections) data.rawSections = {};
+  if (!data.rawSections.projects) data.rawSections.projects = [];
+  var name = document.getElementById('rd-proj-name').value.trim();
+  var desc = document.getElementById('rd-proj-desc').value.trim();
+  if (!name) return;
+  var editIdx = document.getElementById('rd-proj-form').dataset.editIndex;
+  if (editIdx !== undefined && data.rawSections.projects[editIdx]) {
+    data.rawSections.projects[editIdx] = { name: name, description: desc };
+    delete document.getElementById('rd-proj-form').dataset.editIndex;
+  } else {
+    data.rawSections.projects.push({ name: name, description: desc });
+  }
+  document.getElementById('rd-proj-name').value = ''; document.getElementById('rd-proj-desc').value = '';
+  document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+  saveResumeData(data); renderEditableLists(data); renderResumeDataDisplay(data);
+  document.getElementById('rd-proj-save').textContent = 'Save Project';
+  document.getElementById('rd-proj-form').style.display = 'none'; document.getElementById('rd-proj-show-form').style.display = 'block';
+};
+
+// --- Publications ---
+document.getElementById('rd-pub-show-form').onclick = function() {
+  document.getElementById('rd-pub-form').style.display = 'block'; this.style.display = 'none';
+};
+document.getElementById('rd-pub-cancel').onclick = function() {
+  document.getElementById('rd-pub-form').style.display = 'none'; document.getElementById('rd-pub-show-form').style.display = 'block';
+};
+document.getElementById('rd-pub-save').onclick = function() {
+  var data = getResumeData();
+  if (!data.rawSections) data.rawSections = {};
+  if (!data.rawSections.publications) data.rawSections.publications = [];
+  var title = document.getElementById('rd-pub-title').value.trim();
+  var url = document.getElementById('rd-pub-url').value.trim();
+  if (!title) return;
+  var editIdx = document.getElementById('rd-pub-form').dataset.editIndex;
+  if (editIdx !== undefined && data.rawSections.publications[editIdx]) {
+    data.rawSections.publications[editIdx] = { title: title, url: url };
+    delete document.getElementById('rd-pub-form').dataset.editIndex;
+  } else {
+    data.rawSections.publications.push({ title: title, url: url });
+  }
+  document.getElementById('rd-pub-title').value = ''; document.getElementById('rd-pub-url').value = '';
+  document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+  saveResumeData(data); renderEditableLists(data); renderResumeDataDisplay(data);
+  document.getElementById('rd-pub-save').textContent = 'Save Publication';
+  document.getElementById('rd-pub-form').style.display = 'none'; document.getElementById('rd-pub-show-form').style.display = 'block';
+};
+
 document.getElementById('rd-edu-save').onclick = function() {
   var data = getResumeData();
   if (!data.rawSections) data.rawSections = {};
@@ -560,6 +616,22 @@ document.addEventListener('click', function(e) {
       document.getElementById('rd-exp-show-form').style.display = 'none';
       document.getElementById('rd-exp-form').dataset.editIndex = idx;
       document.getElementById('rd-exp-save').textContent = 'Update';
+    } else if (list === 'projects') {
+      document.getElementById('rd-proj-name').value = item.name || '';
+      document.getElementById('rd-proj-desc').value = item.description || '';
+      document.getElementById('rd-proj-form').style.display = 'block';
+      document.getElementById('rd-proj-show-form').style.display = 'none';
+      document.getElementById('rd-proj-form').dataset.editIndex = idx;
+      document.getElementById('rd-proj-save').textContent = 'Update';
+      return;
+    } else if (list === 'publications') {
+      document.getElementById('rd-pub-title').value = item.title || (typeof item === 'string' ? item : '');
+      document.getElementById('rd-pub-url').value = item.url || '';
+      document.getElementById('rd-pub-form').style.display = 'block';
+      document.getElementById('rd-pub-show-form').style.display = 'none';
+      document.getElementById('rd-pub-form').dataset.editIndex = idx;
+      document.getElementById('rd-pub-save').textContent = 'Update';
+      return;
     } else if (list === 'education') {
       document.getElementById('rd-edu-degree').value = item.degree || '';
       document.getElementById('rd-edu-field').value = item.field || '';
@@ -652,6 +724,38 @@ function renderEditableLists(data) {
       html += '<button class="rd-card-del" data-list="experience" data-index="' + i + '">✕</button>';
       html += '</div></div>';  // end buttons + end flex
       html += '</div>';
+      return html;
+    }).join('');
+  }
+  
+  // Projects cards
+  var projList = document.getElementById('rd-projects-list');
+  if (projList) {
+    projList.innerHTML = (sections.projects || []).map(function(item, i) {
+      var html = '<div class="rd-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1">';
+      if (item.name) html += '<div class="rd-card-title">' + escHtml(item.name) + '</div>';
+      if (item.description) html += '<div class="rd-card-desc">' + escHtml(item.description) + '</div>';
+      html += '</div><div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';
+      html += '<button class="rd-card-edit" data-list="projects" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;cursor:pointer;font-size:12px;padding:3px 6px">Edit</button>';
+      html += '<button class="rd-card-del" data-list="projects" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#9ca3af;cursor:pointer;font-size:13px;padding:3px 8px">X</button>';
+      html += '</div></div></div>';
+      return html;
+    }).join('');
+  }
+  
+  // Publications cards
+  var pubList = document.getElementById('rd-publications-list');
+  if (pubList) {
+    pubList.innerHTML = (sections.publications || []).map(function(item, i) {
+      var html = '<div class="rd-card"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="flex:1">';
+      var title = typeof item === 'string' ? item : (item.title || '');
+      var url = typeof item === 'object' ? (item.url || '') : '';
+      if (title) html += '<div class="rd-card-title">' + escHtml(title) + '</div>';
+      if (url) html += '<div class="rd-card-sub">' + escHtml(url) + '</div>';
+      html += '</div><div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';
+      html += '<button class="rd-card-edit" data-list="publications" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;cursor:pointer;font-size:12px;padding:3px 6px">Edit</button>';
+      html += '<button class="rd-card-del" data-list="publications" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#9ca3af;cursor:pointer;font-size:13px;padding:3px 8px">X</button>';
+      html += '</div></div></div>';
       return html;
     }).join('');
   }
@@ -783,11 +887,7 @@ function renderResumeDataDisplay(data) {
       var extracted = data.extractedFields || {};
       var html = '';
 
-      // Summary
-      if (extracted.summary) {
-        html += '<div class="rd-section"><div class="rd-section-title">Summary</div>';
-        html += '<div class="rd-item">' + escHtml(extracted.summary) + '</div></div>';
-      }
+      // Summary displayed in Profile section above
 
       // Skills displayed in editor above
 
