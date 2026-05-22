@@ -80,7 +80,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     uploadStatus.style.display = 'block';
     uploadStatus.className = 'upload-status ' + type;
     uploadStatus.textContent = msg;
+    // Show clear button on success/error
+    document.getElementById('clear-btn').style.display = 'block';
   }
+
+  // Clear all: reset form, clear storage, remove resume data
+  document.getElementById('clear-btn').onclick = function() {
+    // Reset upload area
+    uploadPrompt.style.display = 'block';
+    uploadStatus.style.display = 'none';
+    uploadStatus.textContent = '';
+    document.getElementById('clear-btn').style.display = 'none';
+    
+    // Clear resume text
+    document.getElementById('resume_text').value = '';
+    
+    // Clear profile fields
+    ['profile_name','profile_email','profile_phone','profile_linkedin','profile_github',
+     'profile_website','profile_address','profile_work_authorization'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    
+    // Clear summary and tags
+    var sum = document.getElementById('rd_summary');
+    if (sum) sum.value = '';
+    document.getElementById('rd-skills-tags').innerHTML = '';
+    document.getElementById('rd-languages-tags').innerHTML = '';
+    document.getElementById('rd-experience-list').innerHTML = '';
+    document.getElementById('rd-education-list').innerHTML = '';
+    document.getElementById('rd-projects-list').innerHTML = '';
+    document.getElementById('rd-publications-list').innerHTML = '';
+    
+    // Clear JSON editor
+    document.getElementById('rd-json-editor').value = '';
+    document.getElementById('resume-data-content').innerHTML = '<p class="empty-state">No resume data yet. Upload a PDF and extract your profile.</p>';
+    
+    // Clear storage
+    chrome.storage.sync.remove('resume_full_data');
+    chrome.storage.sync.remove('resume_text');
+    
+    // Reset extract button
+    document.getElementById('extract-btn').disabled = false;
+    document.getElementById('extract-btn').textContent = '🔍 Extract Profile';
+    document.getElementById('extract-status').textContent = '';
+    document.getElementById('extract-status').className = 'field-hint';
+    
+    // Reset model fetch
+    modelsFetched = false;
+  };
 
   // --- runExtraction (shared by PDF upload + button) ---
   let extractAbort = null;
