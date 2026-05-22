@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     msg.innerHTML = 'Go to <a href="#" id="msg-settings-link">Settings</a> to configure your profile and AI engine.';
     document.getElementById('msg-settings-link').onclick = function(e) {
       e.preventDefault();
-      chrome.runtime.openOptionsPage();
+      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
     };
     return;
   }
@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('#msg-settings, #open-settings').forEach(el => {
       el?.addEventListener('click', (e) => {
         e.preventDefault();
-        chrome.runtime.openOptionsPage();
+        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
       });
     });
 
@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('open-settings').onclick = (e) => {
     e.preventDefault();
-    chrome.runtime.openOptionsPage();
+    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
   };
   document.getElementById('reload-page').onclick = (e) => {
     e.preventDefault();
