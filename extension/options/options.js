@@ -138,6 +138,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Store full resume data for AI context
       var fullData = { extractedFields: {}, rawSections: {} };
       for (var k in profile) { if (typeof profile[k] === 'object' || Array.isArray(profile[k])) { fullData.rawSections[k] = profile[k]; } else { fullData.extractedFields[k] = profile[k]; } }
+      // Normalize dates in experience and education to MM/YYYY format
+      var monthsMap = {'jan':'01','feb':'02','mar':'03','apr':'04','may':'05','jun':'06','jul':'07','aug':'08','sep':'09','oct':'10','nov':'11','dec':'12'};
+      ['experience','education'].forEach(function(section) {
+        if (fullData.rawSections[section]) {
+          fullData.rawSections[section].forEach(function(item) {
+            ['start_date','end_date'].forEach(function(field) {
+              if (item[field] && typeof item[field] === 'string') {
+                var m = item[field].match(/^([a-z]{3})\s*(\d{4})$/i);
+                if (m && monthsMap[m[1].toLowerCase()]) {
+                  item[field] = monthsMap[m[1].toLowerCase()] + '/' + m[2];
+                }
+              }
+            });
+          });
+        }
+      });
       let filled = 0;
       for (const [id, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
