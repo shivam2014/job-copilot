@@ -10,6 +10,7 @@ const tests = [
   'tokens.mjs',
   'integration.mjs',
   'form_detection.mjs',
+  'extraction.mjs',
   'llm_prompts.mjs',
 ];
 
