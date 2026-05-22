@@ -149,9 +149,11 @@ var jsonStr = raw.slice(start, end + 1);
       jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
       // Try parsing, if fails try to fix and retry
       var profile;
-      console.log('JC DEBUG jsonStr length:', jsonStr.length);
-      console.log('JC DEBUG jsonStr start:', jsonStr.substring(0, 300));
-      console.log('JC DEBUG jsonStr end:', jsonStr.substring(Math.max(0, jsonStr.length - 300)));
+console.log('JC DEBUG jsonStr length:', jsonStr.length);
+      // Log full jsonStr in chunks to avoid truncation
+      for (var ci = 0; ci < jsonStr.length; ci += 2000) {
+        console.log('JC DEBUG chunk ' + ci + ': ' + jsonStr.substring(ci, ci + 2000));
+      }
       try {
         profile = JSON.parse(jsonStr);
       } catch (e) {
