@@ -33,6 +33,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const uploadPrompt = document.getElementById('upload-prompt');
 
   uploadArea.onclick = () => fileInput.click();
+  document.getElementById('show-paste-link').onclick = (e) => {
+    e.preventDefault();
+    const ta = document.getElementById('resume_text');
+    ta.style.display = 'block';
+    ta.focus();
+    e.target.style.display = 'none';
+  };
   uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); };
   uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
   uploadArea.ondrop = (e) => {
