@@ -119,11 +119,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.usage) { try { TokenTracker.record(model, data.usage); } catch(e) {} }
       let raw = (msg.content || msg.reasoning_content || '').trim();
       if (!raw) throw new Error('Empty response from API');
+      // Try markdown fenced JSON first
       const jm = raw.match(/\`\`\`(?:json)?\s*(\{[\s\S]*?\})\s*\`\`\`/);
-      if (jm) raw = jm[1];
-      const s = raw.indexOf('{'), e = raw.lastIndexOf('}') + 1;
-      if (s === -1 || e <= s) throw new Error('Could not parse API response as JSON');
-      const profile = JSON.parse(raw.slice(s, e));
+      if (jm) { raw = jm[1]; }
+      // Find JSON by looking for the last complete object from the end
+      var s = raw.lastIndexOf('}');
+      if (s === -1) throw new Error('No JSON found in API response');
+      // From the closing }, walk backwards to find the matching opening {
+      var depth = 0;
+      for (var e2 = s; e2 >= 0; e2--) {
+        if (raw[e2] === '}') depth++;
+        else if (raw[e2] === '{') depth--;
+        if (depth === 0) { s = e2; break; }
+      }
+      if (depth !== 0) throw new Error('Unbalanced JSON in API response');
+      var jsonStr = raw.slice(s, s + 1); // Start with just '{'
+      // Find matching closing brace using stack
+      var stack = 0;
+      for (var i = s; i < raw.length; i++) {
+        if (raw[i] === '{') stack++;
+        else if (raw[i] === '}') stack--;
+        if (stack === 0) { jsonStr = raw.slice(s, i + 1); break; }
+      }
+      if (stack !== 0) throw new Error('Unmatched braces in JSON');
+      const profile = JSON.parse(jsonStr);
       const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization', profile_summary: 'summary' };
       // Store full resume data for AI context
       var fullData = { extractedFields: {}, rawSections: {} };
