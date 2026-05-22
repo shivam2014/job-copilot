@@ -183,6 +183,18 @@ async function fillAIQuestions() {
         question, jobDescription, profile.resume_text
       );
       await FormDetector.fillField(field, answer);
+      // Track: simplified — counts 1 call per answer (actual tokens from API)
+      try {
+        if (typeof TokenTracker !== 'undefined') {
+          // Approximate: 4 chars ≈ 1 token
+          const approx = Math.ceil((question.length + answer.length + (profile.resume_text || '').length) / 4);
+          TokenTracker.record(profile.llm_model || 'unknown', {
+            prompt_tokens: Math.ceil(((question.length + (profile.resume_text || '').length)) / 4),
+            completion_tokens: Math.ceil(answer.length / 4),
+            total_tokens: approx,
+          });
+        }
+      } catch(e) {}
       await saveAnswer(field.label || field.identifiers, answer);
       filled++;
     } catch (err) {

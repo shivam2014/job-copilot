@@ -105,6 +105,17 @@
       <div id="saved-answers-list"></div>
     </section>
 
+    <!-- Token Usage -->
+    <section>
+      <div class="section-header">
+        <h2>📊 Token Usage</h2>
+        <button id="reset-tokens-btn" class="btn btn-sm" style="margin-left:auto">Reset</button>
+      </div>
+      <div id="token-usage-content">
+        <p class="empty-state">No usage data yet. Make an API call to see metrics.</p>
+      </div>
+    </section>
+
     <!-- Save -->
     <div class="save-bar">
       <button id="save-btn" class="btn btn-primary">💾 Save</button>
@@ -112,6 +123,7 @@
     </div>
   </div>
 
+  <script src="../lib/token-tracker.js"></script>
   <script type="module" src="../lib/pdf-extract.js"></script>
   <script src="options.js"></script>
 </body>

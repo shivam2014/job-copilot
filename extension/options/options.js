@@ -118,6 +118,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await resp.json();
       const msg = data.choices?.[0]?.message;
       if (!msg) throw new Error('Empty response from API');
+      
+      // Track token usage
+      if (data.usage) {
+        try { TokenTracker.record(model, data.usage); } catch(e) {}
+      }
 
       let raw = (msg.content || msg.reasoning_content || '').trim();
       if (!raw) throw new Error('Empty response from API');
@@ -174,6 +179,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       showMsg(`❌ Error: ${err.message}`, 'error');
     }
   };
+
+  // Load token usage on page open
+  setTimeout(renderTokenUsage, 500);
 });
 
 // --- Saved Answers ---
@@ -235,6 +243,12 @@ async function testConnection() {
     }
 
     const data = await resp.json();
+    
+    // Track token usage
+    if (data.usage) {
+      try { TokenTracker.record(model, data.usage); } catch(e) {}
+    }
+    
     const reply = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
     
     if (reply) {
@@ -249,6 +263,62 @@ async function testConnection() {
     hint.className = 'field-hint error';
   }
 }
+
+// --- Token Usage ---
+async function renderTokenUsage() {
+  const el = document.getElementById('token-usage-content');
+  try {
+    const summary = await TokenTracker.getSummary();
+    if (!summary) {
+      el.innerHTML = '<p class="empty-state">No usage data yet. Extract a profile or test a connection to see metrics.</p>';
+      return;
+    }
+
+    const t = summary.total;
+    let html = `
+      <div class="token-summary">
+        <div class="token-stat">
+          <span class="token-stat-num">${formatNum(t.calls)}</span>
+          <span class="token-stat-label">API Calls</span>
+        </div>
+        <div class="token-stat">
+          <span class="token-stat-num">${TokenTracker.formatTokens(t.totalTokens)}</span>
+          <span class="token-stat-label">Total Tokens</span>
+        </div>
+        <div class="token-stat">
+          <span class="token-stat-num">${TokenTracker.formatTokens(t.promptTokens)}</span>
+          <span class="token-stat-label">Prompt</span>
+        </div>
+        <div class="token-stat">
+          <span class="token-stat-num">${TokenTracker.formatTokens(t.completionTokens)}</span>
+          <span class="token-stat-label">Completion</span>
+        </div>
+      </div>
+      <div class="token-week">Last 7 days: ${TokenTracker.formatTokens(summary.weekTotal)} tokens</div>
+      <div style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Per Model</div>`;
+
+    for (const [model, info] of Object.entries(summary.byModel)) {
+      html += `<div class="token-model">
+        <span class="token-model-name">${escHtml(model)}</span>
+        <span class="token-model-tokens">${info.calls} call(s) · ${TokenTracker.formatTokens(info.totalTokens)} tokens</span>
+      </div>`;
+    }
+
+    el.innerHTML = html;
+  } catch (err) {
+    el.innerHTML = `<p class="empty-state">Error loading usage: ${err.message}</p>`;
+  }
+}
+
+function formatNum(n) { return n.toLocaleString(); }
+
+// Reset tokens
+document.getElementById('reset-tokens-btn').onclick = async () => {
+  if (confirm('Reset all token usage data?')) {
+    await TokenTracker.reset();
+    renderTokenUsage();
+  }
+};
 
 // Delete saved answers
 document.addEventListener('click', async (e) => {
