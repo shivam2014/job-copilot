@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   // --- runExtraction (shared by PDF upload + button) ---
-  let extractAbort = null;
+  var extractAbort = null;
 
   async function runExtraction(resumeText, sourceLabel) {
     const baseUrl = (document.getElementById('llm_base_url').value || 'http://localhost:19530/v1').trim().replace(/\/+$/, '');
@@ -1111,7 +1111,7 @@ function ensureUrl(url) {
 }
 
 
-let modelsFetched = false;
+var modelsFetched = false;
 
 document.getElementById('llm_model').addEventListener('focus', async () => {
   if (modelsFetched) return;

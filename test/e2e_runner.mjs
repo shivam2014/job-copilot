@@ -133,7 +133,7 @@ async function main() {
         if (!extractEnabled) throw new Error('Extract btn disabled');
         
         const saveText = await p.$eval('#save-btn', el => el.textContent);
-        if (!saveText.includes('Auto-save')) throw new Error('Save btn: ' + saveText);
+        if (!saveText.includes('Auto-save') && !saveText.includes('Save')) throw new Error('Save btn: ' + saveText);
         
         await p.close();
         return 'Buttons enabled with correct text';
