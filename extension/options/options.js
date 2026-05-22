@@ -254,7 +254,7 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
 
     const dropdown = document.getElementById('model-dropdown');
     const modelList = models
-      .filter(m => m.id && !m.id.includes('.'))
+      .filter(m => m.id && m.id.length < 100)
       .slice(0, 30);
 
     dropdown.innerHTML = modelList.map(m => 
