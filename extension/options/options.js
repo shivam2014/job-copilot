@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     extractAbort = new AbortController();
 
     try {
-      const prompt = 'Extract resume JSON: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills[], experience[{title,company,start_date,end_date,description}], education[{school,degree,field,start_date,end_date}], languages[{name,level}], projects[{name,description}], publications[]. Empty string for missing. No null. JSON only.';
+      const prompt = 'You are a resume parser. Output ONLY valid JSON with these fields. No thinking, no markdown, no backticks, no explanations. JSON must start with { and end with }. Fields: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills[], experience[{title,company,start_date,end_date,description}], education[{school,degree,field,start_date,end_date}], languages[{name,level}], projects[{name,description}], publications[]. Empty string if missing. No null.';
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
@@ -122,26 +122,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Try markdown fenced JSON first
       const jm = raw.match(/\`\`\`(?:json)?\s*(\{[\s\S]*?\})\s*\`\`\`/);
       if (jm) { raw = jm[1]; }
-      // Find JSON by looking for the last complete object from the end
-      var s = raw.lastIndexOf('}');
-      if (s === -1) throw new Error('No JSON found in API response');
-      // From the closing }, walk backwards to find the matching opening {
-      var depth = 0;
-      for (var e2 = s; e2 >= 0; e2--) {
-        if (raw[e2] === '}') depth++;
-        else if (raw[e2] === '{') depth--;
-        if (depth === 0) { s = e2; break; }
+      // Find JSON by walking back from last } to matching {
+      var end = raw.lastIndexOf('}');
+      if (end === -1) throw new Error('No JSON found');
+      var depth = 0, start = -1;
+      for (var i = end; i >= 0; i--) {
+        if (raw[i] === '}') depth++;
+        else if (raw[i] === '{') depth--;
+        if (depth === 0) { start = i; break; }
       }
-      if (depth !== 0) throw new Error('Unbalanced JSON in API response');
-      var jsonStr = raw.slice(s, s + 1); // Start with just '{'
-      // Find matching closing brace using stack
-      var stack = 0;
-      for (var i = s; i < raw.length; i++) {
-        if (raw[i] === '{') stack++;
-        else if (raw[i] === '}') stack--;
-        if (stack === 0) { jsonStr = raw.slice(s, i + 1); break; }
-      }
-      if (stack !== 0) throw new Error('Unmatched braces in JSON');
+      if (start === -1) throw new Error('Unbalanced JSON');
+      var jsonStr = raw.slice(start, end + 1);
       const profile = JSON.parse(jsonStr);
       const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization', profile_summary: 'summary' };
       // Store full resume data for AI context
