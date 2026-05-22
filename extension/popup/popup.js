@@ -18,6 +18,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('status-text').textContent = 'Open a job application page to use Copilot';
     document.getElementById('status-card').className = 'status-card idle';
     msg.innerHTML = 'Go to <a href="#" id="open-settings">Settings</a> to configure your profile and AI engine.';
+    document.getElementById('open-settings').onclick = function(e) {
+      e.preventDefault();
+      chrome.runtime.openOptionsPage();
+    };
     return;
   }
 
@@ -91,6 +95,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     setStatus(`Error: ${err.message}`, 'error');
   }
 
+  document.getElementById('open-settings').onclick = (e) => {
+    e.preventDefault();
+    chrome.runtime.openOptionsPage();
+  };
   document.getElementById('reload-page').onclick = (e) => {
     e.preventDefault();
     chrome.tabs.reload(tab.id);
