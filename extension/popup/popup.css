@@ -101,8 +101,9 @@ body {
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: #3b82f6 !important;
+  color: white !important;
+  border: 1px solid #2563eb !important;
 }
 .btn-primary:hover { background: #2563eb; }
 .btn-primary:disabled {
@@ -111,8 +112,9 @@ body {
 }
 
 .btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
+  background: #f3f4f6 !important;
+  color: #374151 !important;
+  border: 1px solid #d1d5db !important;
 }
 .btn-secondary:hover { background: #e5e7eb; }
 
