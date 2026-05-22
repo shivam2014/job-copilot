@@ -203,6 +203,53 @@ function showMsg(text, type) {
   setTimeout(() => { el.textContent = ''; el.className = 'save-msg'; }, 4000);
 }
 
+// --- Test connection (checks if model + endpoint work) ---
+async function testConnection() {
+  const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, '');
+  const apiKey = document.getElementById('llm_api_key').value || '';
+  const model = document.getElementById('llm_model').value.trim();
+  
+  if (!baseUrl || !model) return;
+  
+  const hint = document.getElementById('model-count');
+  hint.textContent = 'Testing connection...';
+  hint.className = 'field-hint loading';
+
+  try {
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'user', content: 'Reply exactly: ok' }],
+        max_tokens: 5,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text().catch(() => '');
+      throw new Error(`${resp.status}${err ? ': ' + err.slice(0,100) : ''}`);
+    }
+
+    const data = await resp.json();
+    const reply = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
+    
+    if (reply) {
+      hint.textContent = '✅ Connection OK — model responds';
+      hint.className = 'field-hint success';
+    } else {
+      hint.textContent = '⚠️ Connected but empty response — model may not be ready';
+      hint.className = 'field-hint';
+    }
+  } catch (err) {
+    hint.textContent = `❌ ${err.message}`;
+    hint.className = 'field-hint error';
+  }
+}
+
 // Delete saved answers
 document.addEventListener('click', async (e) => {
   if (e.target.classList.contains('qa-delete')) {
@@ -268,6 +315,7 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
       el.addEventListener('click', () => {
         document.getElementById('llm_model').value = el.dataset.model;
         dropdown.classList.remove('open');
+        testConnection();
       });
     });
 
@@ -286,6 +334,14 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
 // Reset fetch flag when URL or key changes
 document.getElementById('llm_base_url').addEventListener('change', () => { modelsFetched = false; });
 document.getElementById('llm_api_key').addEventListener('change', () => { modelsFetched = false; });
+
+// Press Enter in model field to test connection
+document.getElementById('llm_model').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    testConnection();
+  }
+});
 
 // Close model dropdown when clicking outside
 document.addEventListener('click', (e) => {
