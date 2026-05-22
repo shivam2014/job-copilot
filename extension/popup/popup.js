@@ -17,8 +17,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('actions-section').style.display = 'none';
     document.getElementById('status-text').textContent = 'Open a job application page to use Copilot';
     document.getElementById('status-card').className = 'status-card idle';
-    msg.innerHTML = 'Go to <a href="#" id="open-settings">Settings</a> to configure your profile and AI engine.';
-    document.getElementById('open-settings').onclick = function(e) {
+    msg.innerHTML = 'Go to <a href="#" id="msg-settings-link">Settings</a> to configure your profile and AI engine.';
+    document.getElementById('msg-settings-link').onclick = function(e) {
       e.preventDefault();
       chrome.runtime.openOptionsPage();
     };
