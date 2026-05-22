@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     extractAbort = new AbortController();
 
     try {
-      const prompt = 'JSON only from resume: name,email,phone,linkedin,github,website,address,work_authorization,summary,skills[],experience[{title,company,start_date,end_date,description}],education[{school,degree,field,start_date,end_date}],languages[{name,level}],projects[{name,description}],publications[]. Start with {. End with }. No null.';
+      const prompt = 'JSON only from resume: name,email,phone,linkedin,github,website,address,work_authorization,summary,skills[],experience[{title,company,start_date,end_date,description}],education[{school,degree,field,start_date,end_date}],languages[{name,level}],projects[{name,description}],publications[{title,url}]. Start with {. End with }. No null.';
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
