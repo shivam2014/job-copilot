@@ -91,6 +91,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     uploadStatus.textContent = '';
     document.getElementById('clear-btn').style.display = 'none';
     
+    // Reset file input
+    document.getElementById('resume_file').value = '';
     // Clear resume text
     document.getElementById('resume_text').value = '';
     
@@ -254,6 +256,8 @@ console.log('JC DEBUG jsonStr length:', jsonStr.length);
       }
       // Auto-save extracted profile
       if (typeof debouncedSave === 'function') debouncedSave();
+      // Refresh the Full Resume Data section
+      renderResumeData();
       statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
       statusEl.className = 'field-hint success';
       if (sourceLabel) {
@@ -292,7 +296,7 @@ console.log('JC DEBUG jsonStr length:', jsonStr.length);
     await runExtraction(text, null);
   };
   // --- Auto-save on any field change ---
-  let saveTimer = null;
+  var saveTimer = null;
   async function autoSave() {
     const data = {};
     fields.forEach(f => { data[f] = document.getElementById(f).value.trim(); });
