@@ -397,7 +397,32 @@ function updateFromEditors() {
 }
 
 function saveResumeData(data) {
-  try { chrome.storage.sync.set({ resume_full_data: JSON.stringify(data) }); } catch(e) {}
+  // Merge with existing manual data to preserve user-added content
+  chrome.storage.sync.get('resume_full_data', function(result) {
+    try {
+      if (result.resume_full_data) {
+        var existing = JSON.parse(result.resume_full_data);
+        // Keep existing rawSections that aren't in the new data or are empty
+        if (existing.rawSections && data.rawSections) {
+          for (var key in existing.rawSections) {
+            if (!data.rawSections[key] || (Array.isArray(data.rawSections[key]) && data.rawSections[key].length === 0)) {
+              // Keep existing data if new data is empty/missing
+              data.rawSections[key] = existing.rawSections[key];
+            }
+          }
+        }
+        // Keep extractedFields that aren't in new data
+        if (existing.extractedFields && data.extractedFields) {
+          for (var key in existing.extractedFields) {
+            if (!data.extractedFields[key]) {
+              data.extractedFields[key] = existing.extractedFields[key];
+            }
+          }
+        }
+      }
+    } catch(e) {}
+    try { chrome.storage.sync.set({ resume_full_data: JSON.stringify(data) }); } catch(e) {}
+  });
 }
 
 function saveResumeDataDebounced() {
