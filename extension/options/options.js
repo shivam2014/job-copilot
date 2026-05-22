@@ -305,8 +305,8 @@ function updateConfigStatus() {
       badge.className = 'config-badge untested';
       badge.textContent = '⚠️ Default — configure or test';
       const alert = document.getElementById('config-alert');
-      if (alert) { alert.className = 'config-alert'; alert.style.display = 'flex'; document.getElementById('config-alert-text').innerHTML = 'The defaults shown are for a local <strong>Nyro</strong> endpoint. <a href="#" id="alert-test-link" style="color:#92400e">Test connection</a> or enter your own API URL, key, and model.'; document.getElementById('alert-test-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
-      if (warning) { warning.style.display = 'block'; warning.innerHTML = '<strong>🔧 Configure your AI Engine</strong> — the defaults shown are for a local <strong>Nyro</strong> endpoint. <a href="#" id="test-now-link" style="color:#92400e;font-weight:600">Test connection</a> or enter your own API URL, key, and model.'; document.getElementById('test-now-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
+      if (alert) { alert.className = 'config-alert'; alert.style.display = 'flex'; document.getElementById('config-alert-text').innerHTML = 'The default configuration uses a local Nyro endpoint. <a href="#" id="alert-test-link" style="color:#92400e;font-weight:600">Test connection</a> or enter your own API URL and key.'; document.getElementById('alert-test-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
+      if (warning) { warning.style.display = 'block'; warning.innerHTML = '<strong>🔧 Configure your AI Engine</strong> — defaults use a local Nyro endpoint. <a href="#" id="test-now-link" style="color:#92400e;font-weight:600">Test connection</a> or enter your own API URL, key, and model.'; document.getElementById('test-now-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
     } else if (baseUrl) {
       badge.className = 'config-badge untested';
       badge.textContent = '⚠️ Untested';
