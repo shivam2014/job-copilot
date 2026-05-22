@@ -145,7 +145,7 @@ var jsonStr = raw.slice(start, end + 1);
       jsonStr = jsonStr.replace(/\u201c|\u201d/g, '"'); // Replace smart double quotes
       jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Remove trailing commas before }
       jsonStr = jsonStr.replace(/,\s*\]/g, ']'); // Remove trailing commas before ]
-      // Fix unquoted keys (e.g. {name: "value"} -> {"name": "value"})
+      // Fix unquoted keys moved to recovery (below)
       jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
       // Try parsing, if fails try to fix and retry
       var profile;
@@ -159,6 +159,8 @@ console.log('JC DEBUG jsonStr length:', jsonStr.length);
       } catch (e) {
         // Last resort: try finding valid JSON by scanning for patterns
         console.log('JC JSON parse error, trying recovery...');
+        // Fix unquoted keys (e.g. {name: "value"} -> {"name": "value"})
+        jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
         // Try wrapping unquoted strings in single quotes (rare LLM output)
         jsonStr = jsonStr.replace(/:\s*'([^']*?)'([,}])/g, ':"$1"$2');
         try { profile = JSON.parse(jsonStr); } catch(e2) {
