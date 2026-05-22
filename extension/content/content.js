@@ -32,6 +32,36 @@ async function init() {
 
     if (totalFields === 0) return; // No form detected
     
+    // Auto-fill personal fields from extension settings
+    setTimeout(async function() {
+      try {
+        const profile = await chrome.storage.sync.get([
+          'profile_name', 'profile_email', 'profile_phone', 'profile_linkedin',
+          'profile_github', 'profile_website', 'profile_address', 'profile_work_authorization'
+        ]);
+        const fields = FormDetector.detect();
+        const fillMap = {
+          name: profile.profile_name,
+          email: profile.profile_email,
+          phone: profile.profile_phone,
+          linkedin: profile.profile_linkedin,
+          github: profile.profile_github,
+          website: profile.profile_website,
+          address: profile.profile_address,
+          work_authorization: profile.profile_work_authorization,
+        };
+        let filled = 0;
+        for (const field of [...fields.personal, ...fields.selects]) {
+          const value = fillMap[field.name];
+          if (value) {
+            const ok = await FormDetector.fillField(field, value);
+            if (ok) filled++;
+          }
+        }
+        if (filled > 0) console.log('JC: Auto-filled ' + filled + ' personal field(s)');
+      } catch(e) {}
+    }, 3000);
+    
     // Auto-click "Apply Now" or similar buttons to start the application
     setTimeout(function() {
       var allBtns = document.querySelectorAll('button, a');
