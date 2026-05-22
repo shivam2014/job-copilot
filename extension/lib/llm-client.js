@@ -1,5 +1,5 @@
 // LLM Client — OpenAI-compatible API wrapper
-// Supports any provider: OpenAI, local llama.cpp, Ollama, vLLM, Nyro, etc.
+// Handles both regular models (content) and reasoning models (reasoning_content)
 
 const LLMClient = {
   async getConfig() {
@@ -37,36 +37,32 @@ const LLMClient = {
     }
 
     const data = await response.json();
-    return data.choices[0].message.content.trim();
+    const msg = data.choices[0].message;
+    
+    // Handle reasoning models (e.g., DeepSeek) that put output in reasoning_content
+    let text = (msg.content || '').trim();
+    if (!text) {
+      text = (msg.reasoning_content || '').trim();
+    }
+    if (!text) {
+      throw new Error('LLM returned empty response');
+    }
+    
+    return text;
   },
 
   // Extract a value for any form field from the resume
-  // Works for personal fields (name, email, phone) AND open-ended questions
   async extractFieldValue(fieldLabel, fieldType, resumeText, jobDescription) {
-    let systemPrompt, userPrompt;
-
     if (fieldType === 'personal') {
-      // Direct extraction — pull exact value from resume
-      systemPrompt = `You are filling a job application form. 
-Extract the EXACT value for "${fieldLabel}" from the resume below.
-Return ONLY the value — no explanation, no quotes, no label.
-If the field asks for a URL, return the full URL.
-If the value is not found in the resume, return "".`;
-
-      userPrompt = `Resume:\n${resumeText}\n\nExtract: ${fieldLabel}`;
+      return this.chat([
+        { role: 'system', content: `You are filling a job application form. Extract the EXACT value for "${fieldLabel}" from the resume below. Return ONLY the value — no explanation, no quotes, no label. If the value is not found, return "".` },
+        { role: 'user', content: `Resume:\n${resumeText}\n\nExtract: ${fieldLabel}` },
+      ], { temperature: 0.05, maxTokens: 100 });
     } else {
-      // Open-ended question — generate tailored answer
-      systemPrompt = `You are helping a job applicant answer application questions.
-Use the resume and job description to write a concise, professional answer.
-Be honest — do not invent experience.
-Answer directly with no explanation or meta-commentary.`;
-
-      userPrompt = `Job Description:\n${jobDescription || '(Not provided)'}\n\nResume:\n${resumeText}\n\nQuestion: ${fieldLabel}\n\nAnswer:`;
+      return this.chat([
+        { role: 'system', content: 'You are helping a job applicant answer application questions. Use the resume and job description to write a concise, professional answer. Be honest — do not invent experience. Answer directly with no explanation.' },
+        { role: 'user', content: `Job Description:\n${jobDescription || '(Not provided)'}\n\nResume:\n${resumeText}\n\nQuestion: ${fieldLabel}\n\nAnswer:` },
+      ], { temperature: 0.3, maxTokens: 300 });
     }
-
-    return this.chat([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ], { temperature: 0.1, maxTokens: fieldType === 'personal' ? 100 : 300 });
   }
 };
