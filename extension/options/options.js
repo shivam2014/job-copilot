@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('llm_api_key').value = 'dummy';
   // Clear model if it was a pre-filled default from an older version
   const savedModel = document.getElementById('llm_model').value;
-  if (savedModel && ['gpt-4o-mini', 'deepseek-v4-flash-2'].includes(savedModel)) {
+  if (savedModel && ['gpt-4o-mini'].includes(savedModel)) {
     document.getElementById('llm_model').value = '';
   }
   // Model loaded on focus from endpoint's /v1/models
