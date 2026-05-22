@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     extractAbort = new AbortController();
 
     try {
-      const prompt = 'Extract full resume data as JSON. Include: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills (array), experience (array of {company, title, start_date, end_date, description}), education (array of {school, degree, start_date, end_date}), languages, publications (array), projects (array of {name, description}). Use empty string for missing values. No null. Arrays can be empty. JSON only.';
+      const prompt = 'Extract full resume data as JSON. Include: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills (array), experience (array of {company, title, start_date, end_date, description}), education (array of {school, degree, start_date, end_date}), languages (array of {name, level}), publications (array), projects (array of {name, description}). Use empty string for missing values. No null. Arrays can be empty. JSON only.';
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
@@ -517,7 +517,8 @@ function renderTagLists(data) {
   var langsContainer = document.getElementById('rd-languages-tags');
   if (langsContainer) {
     langsContainer.innerHTML = (sections.languages || []).map(function(l, i) {
-      return '<span class="rd-tag-with-del">' + escHtml(l) + '<button class="rd-tag-del" data-section="languages" data-index="' + i + '">✕</button></span>';
+      var display = typeof l === 'object' ? (l.name || '') + (l.level ? ' — ' + l.level : '') : l;
+      return '<span class="rd-tag-with-del">' + escHtml(display) + '<button class="rd-tag-del" data-section="languages" data-index="' + i + '">✕</button></span>';
     }).join('');
   }
 }
@@ -632,7 +633,10 @@ function renderResumeDataDisplay(data) {
       if (sections.languages && sections.languages.length > 0) {
         html += '<div class="rd-section"><div class="rd-section-title">Languages</div>';
         html += '<div class="rd-tags">';
-        sections.languages.forEach(function(l) { html += '<span class="rd-tag">' + escHtml(l) + '</span>'; });
+        sections.languages.forEach(function(l) {
+          var display = typeof l === 'object' ? (l.name || '') + (l.level ? ' — ' + l.level : '') : l;
+          html += '<span class="rd-tag">' + escHtml(display) + '</span>';
+        });
         html += '</div></div>';
       }
 
