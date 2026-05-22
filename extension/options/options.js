@@ -566,12 +566,64 @@ function renderEditableLists(data) {
   if (langsInput && sections.languages) langsInput.value = sections.languages.join(', ');
 }
 
-// Auto-save when skills/languages change
-  // Skills/languages handled via tag add/delete (rd-skill-add, rd-lang-add)
+  // Add skill tag
+  document.getElementById('rd-skill-add').addEventListener('click', function() { addTag('skills', 'rd-skill-input', 'rd-skills-tags'); });
+  document.getElementById('rd-skill-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); addTag('skills', 'rd-skill-input', 'rd-skills-tags'); } });
+  
+  // Add language tag
+  document.getElementById('rd-lang-add').addEventListener('click', function() { addLanguageTag(); });
+  document.getElementById('rd-lang-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); addLanguageTag(); } });
+  document.getElementById('rd-lang-level').addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); addLanguageTag(); } });
+  
+  // Tag helpers
+  function addTag(section, inputId, containerId) {
+    var input = document.getElementById(inputId);
+    var val = input.value.trim();
+    if (!val) return;
+    var data = getResumeData();
+    if (!data.rawSections) data.rawSections = {};
+    if (!data.rawSections[section]) data.rawSections[section] = [];
+    data.rawSections[section].push(val);
+    input.value = '';
+    document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+    saveResumeData(data);
+    renderTagLists(data);
+    renderResumeDataDisplay(data);
+    input.focus();
+  }
+  
+  function addLanguageTag() {
+    var input = document.getElementById('rd-lang-input');
+    var level = document.getElementById('rd-lang-level');
+    var val = input.value.trim();
+    if (!val) return;
+    var data = getResumeData();
+    if (!data.rawSections) data.rawSections = {};
+    if (!data.rawSections.languages) data.rawSections.languages = [];
+    data.rawSections.languages.push(level.value ? { name: val, level: level.value } : val);
+    input.value = ''; level.value = '';
+    document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+    saveResumeData(data);
+    renderTagLists(data);
+    renderResumeDataDisplay(data);
+    input.focus();
+  }
+  
+  function deleteTag(section, index) {
+    var data = getResumeData();
+    if (data.rawSections && data.rawSections[section]) {
+      data.rawSections[section].splice(index, 1);
+      document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+      saveResumeData(data);
+      renderTagLists(data);
+      renderResumeDataDisplay(data);
+    }
+  }
+  
+  // JSON editor auto-save
   document.getElementById('rd-json-editor').addEventListener('input', function() {
     saveResumeDataDebounced();
   });
-
 // --- Resume Data Loader (page-load entry) ---
 function renderResumeData() {
   chrome.storage.sync.get('resume_full_data', function(result) {
@@ -608,13 +660,7 @@ function renderResumeDataDisplay(data) {
         html += '<div class="rd-item">' + escHtml(extracted.summary) + '</div></div>';
       }
 
-      // Skills
-      if (sections.skills && sections.skills.length > 0) {
-        html += '<div class="rd-section"><div class="rd-section-title">Skills (' + sections.skills.length + ')</div>';
-        html += '<div class="rd-tags">';
-        sections.skills.forEach(function(s) { html += '<span class="rd-tag">' + escHtml(s) + '</span>'; });
-        html += '</div></div>';
-      }
+      // Skills displayed in editor above
 
       // Experience
       if (sections.experience && sections.experience.length > 0) {
