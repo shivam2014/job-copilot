@@ -218,6 +218,7 @@ var jsonStr = raw.slice(start, end + 1);
     statusEl.onclick = null;
     extractAbort = null;
   }
+  window.runExtraction = runExtraction;
 
   function cancelExtraction() {
     if (extractAbort) {
@@ -1111,11 +1112,11 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
           var label = btn.dataset.pendingLabel || null;
           delete btn.dataset.pendingText;
           delete btn.dataset.pendingLabel;
-          runExtraction(pending, label);
+          window.runExtraction(pending, label);
         } else {
           // Also check textarea (manual paste case)
           var ta = document.getElementById('resume_text').value.trim();
-          if (ta) runExtraction(ta, null);
+          if (ta) window.runExtraction(ta, null);
         }
       });
     });
