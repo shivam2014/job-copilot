@@ -9,12 +9,12 @@ body {
 }
 
 .container {
-  max-width: 640px;
+  max-width: 600px;
   margin: 0 auto;
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   color: #3b82f6;
   margin-bottom: 4px;
@@ -23,27 +23,38 @@ h1 {
 .subtitle {
   font-size: 13px;
   color: #6b7280;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
 section {
   background: white;
   border-radius: 12px;
   padding: 20px 24px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-h2 {
+.section-primary {
+  border-left: 3px solid #3b82f6;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.section-header h2 {
   font-size: 16px;
   font-weight: 600;
-  margin-bottom: 4px;
 }
 
 .section-desc {
   font-size: 12px;
   color: #6b7280;
   margin-bottom: 16px;
+  line-height: 1.5;
 }
 
 .field-row {
@@ -85,57 +96,53 @@ input:focus, textarea:focus {
 
 textarea {
   resize: vertical;
-  min-height: 100px;
+  min-height: 80px;
   line-height: 1.5;
 }
 
-.field-hint {
-  display: block;
-  font-size: 11px;
-  color: #9ca3af;
-  margin-top: 2px;
+/* Upload area */
+.upload-area {
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 12px;
 }
+.upload-area:hover {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+}
+.upload-area.dragover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+.upload-icon { font-size: 32px; margin-bottom: 6px; }
+.upload-prompt p { margin: 4px 0; font-size: 14px; color: #374151; }
+.upload-hint { font-size: 12px !important; color: #9ca3af !important; }
+.upload-status {
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.upload-status.success { background: #ecfdf5; color: #065f46; }
+.upload-status.error { background: #fef2f2; color: #991b1b; }
+.upload-status.loading { background: #eff6ff; color: #1e40af; }
 
-.file-upload {
+/* Buttons */
+.inline-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-top: 8px;
 }
 
-.file-btn {
-  display: inline-block;
-  padding: 8px 16px;
-  background: #f3f4f6;
-  border: 1px dashed #d1d5db;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #374151;
-  transition: background 0.15s;
-}
-
-.file-btn:hover {
-  background: #e5e7eb;
-}
-
-.file-name {
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 24px;
-}
-
 .btn {
-  padding: 10px 24px;
+  padding: 9px 18px;
   border: none;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s;
@@ -147,72 +154,9 @@ textarea {
 }
 .btn-primary:hover { background: #2563eb; }
 
-.save-msg {
-  font-size: 13px;
-}
-.save-msg.success { color: #065f46; }
-.save-msg.error { color: #991b1b; }
-
-/* Section enhancements */
-.section-primary {
-  border-left: 3px solid #3b82f6;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.section-header h2 {
-  margin-bottom: 0;
-}
-
-.badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.badge-required {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.badge-optional {
-  background: #e0e7ff;
-  color: #3730a3;
-}
-
-.save-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 0;
-}
-
-/* New elements */
-.inline-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-}
-
 .btn-accent {
   background: #8b5cf6;
   color: white;
-  padding: 9px 18px;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
 }
 .btn-accent:hover { background: #7c3aed; }
 .btn-accent:disabled {
@@ -220,28 +164,28 @@ textarea {
   cursor: not-allowed;
 }
 
-.btn-accent.loading {
-  opacity: 0.7;
-  pointer-events: none;
+/* Save bar */
+.save-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
 }
 
-.empty-state {
-  color: #9ca3af;
-  font-size: 13px;
-  text-align: center;
-  padding: 16px;
-  background: #f9fafb;
-  border-radius: 8px;
-}
+.save-msg { font-size: 13px; }
+.save-msg.success { color: #065f46; }
+.save-msg.error { color: #991b1b; }
 
-#extract-status {
+/* Status messages */
+.field-hint {
   font-size: 12px;
+  color: #9ca3af;
 }
-#extract-status.loading { color: #7c3aed; }
-#extract-status.success { color: #065f46; }
-#extract-status.error { color: #991b1b; }
+.field-hint.success { color: #065f46; }
+.field-hint.error { color: #991b1b; }
+.field-hint.loading { color: #7c3aed; }
 
-/* Saved Q&A styles */
+/* Saved Q&A */
 #saved-answers-list {
   display: flex;
   flex-direction: column;
@@ -257,31 +201,19 @@ textarea {
   font-size: 12px;
   line-height: 1.5;
 }
-
-.qa-question {
-  color: #374151;
-  margin-bottom: 4px;
-}
-
-.qa-answer {
-  color: #6b7280;
-}
-
+.qa-question { color: #374151; margin-bottom: 4px; }
+.qa-answer { color: #6b7280; }
 .qa-delete {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 8px; right: 8px;
   background: none;
   border: 1px solid #e5e7eb;
   border-radius: 4px;
   cursor: pointer;
   color: #9ca3af;
   font-size: 12px;
-  width: 22px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
 }
 .qa-delete:hover {
   background: #fef2f2;
@@ -289,45 +221,11 @@ textarea {
   border-color: #fecaca;
 }
 
-/* Upload area */
-.upload-area {
-  border: 2px dashed #d1d5db;
-  border-radius: 12px;
-  padding: 24px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  margin-bottom: 12px;
-}
-.upload-area:hover {
-  border-color: #3b82f6;
-  background: #f0f7ff;
-}
-.upload-area.dragover {
-  border-color: #3b82f6;
-  background: #eff6ff;
-}
-.upload-icon {
-  font-size: 36px;
-  margin-bottom: 8px;
-}
-.upload-prompt p {
-  margin: 4px 0;
-  font-size: 14px;
-  color: #374151;
-}
-.upload-hint {
-  font-size: 12px !important;
-  color: #9ca3af !important;
-}
-.upload-status {
-  padding: 12px;
-  border-radius: 8px;
+.empty-state {
+  color: #9ca3af;
   font-size: 13px;
-}
-.upload-status.success { background: #ecfdf5; color: #065f46; }
-.upload-status.error { background: #fef2f2; color: #991b1b; }
-.upload-status.loading { background: #eff6ff; color: #1e40af; }
-.upload-status .filename {
-  font-weight: 600;
+  text-align: center;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
 }

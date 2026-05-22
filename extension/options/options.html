@@ -8,144 +8,101 @@
 </head>
 <body>
   <div class="container">
-    <h1>Job Copilot Settings</h1>
+    <h1>Job Copilot</h1>
     <p class="subtitle">Your profile is extracted from your resume via AI. You review and edit. All data stays in your browser.</p>
 
-    <!-- Step 1: LLM Config (needed first for extraction to work) -->
+    <!-- Step 1: AI Engine -->
     <section class="section-primary">
       <div class="section-header">
-        <h2>⚙️ Step 1: Configure AI Engine</h2>
-        <span class="badge badge-required">DO THIS FIRST</span>
+        <h2>⚙️ AI Engine</h2>
       </div>
       <p class="section-desc">
-        This powers <strong>extracting your profile</strong> from your resume (Step 2) 
-        and <strong>generating answers</strong> to application questions later.
-        Any OpenAI-compatible endpoint works.
+        Any OpenAI-compatible endpoint. Powers profile extraction from your resume (Step 2)
+        and generating answers on application forms.
       </p>
 
-      <div class="field-row">
-        <div class="field wide">
-          <label>API Base URL</label>
-          <input type="url" id="llm_base_url" placeholder="http://localhost:19530/v1">
-          <span class="field-hint">Default: http://localhost:19530/v1 (Nyro). Change for OpenAI or other providers.</span>
-        </div>
+      <div class="field">
+        <label>API Base URL</label>
+        <input type="url" id="llm_base_url" placeholder="http://localhost:19530/v1">
       </div>
 
       <div class="field-row">
         <div class="field">
           <label>API Key</label>
           <input type="password" id="llm_api_key" placeholder="dummy">
-          <span class="field-hint">Most local endpoints accept "dummy"</span>
         </div>
         <div class="field">
-          <label>Model Name</label>
+          <label>Model</label>
           <input type="text" id="llm_model" placeholder="deepseek-v4-flash-2">
         </div>
       </div>
     </section>
 
-    <!-- Step 2: Upload Resume → Extract Profile -->
+    <!-- Step 2: Upload Resume -->
     <section class="section-primary">
       <div class="section-header">
-        <h2>📄 Step 2: Upload Resume & Extract Profile</h2>
-        <span class="badge badge-required">USES AI ENGINE ABOVE</span>
+        <h2>📄 Resume</h2>
       </div>
       <p class="section-desc">
-        Upload your resume <strong>PDF</strong>. The AI engine (configured above) extracts your
-        name, email, phone, LinkedIn, GitHub and fills the profile fields below.
-        You can edit any field afterward.
+        Upload your resume PDF or paste text. The AI engine above extracts your profile fields below.
       </p>
-      
+
       <div class="upload-area" id="upload-area">
         <div class="upload-prompt" id="upload-prompt">
           <div class="upload-icon">📄</div>
-          <p><strong>Click to upload your resume PDF</strong></p>
-          <p class="upload-hint">or paste text in the box below</p>
+          <p><strong>Upload your resume PDF</strong></p>
+          <p class="upload-hint">or paste text below</p>
           <input type="file" id="resume_file" accept=".pdf" hidden>
         </div>
         <div class="upload-status" id="upload-status" style="display:none"></div>
       </div>
 
       <div class="field">
-        <textarea id="resume_text" rows="8" placeholder="Or paste your resume text directly here..."></textarea>
+        <textarea id="resume_text" rows="6" placeholder="Or paste your resume text here..."></textarea>
       </div>
 
       <div class="inline-actions">
-        <button id="extract-btn" class="btn btn-accent">🔍 Extract Profile from Resume</button>
+        <button id="extract-btn" class="btn btn-accent">🔍 Extract Profile</button>
         <span id="extract-status" class="field-hint"></span>
       </div>
     </section>
 
-    <!-- Step 3: Profile Fields (editable) -->
+    <!-- Step 3: Profile -->
     <section>
       <div class="section-header">
-        <h2>📋 Step 3: Review & Edit Profile</h2>
-        <span class="badge badge-optional">USED TO FILL FORMS</span>
+        <h2>📋 Profile</h2>
       </div>
       <p class="section-desc">
-        These values autofill application forms. AI pre-filled them from your resume. 
-        <strong>Correct anything that looks wrong</strong> — this is your source of truth.
+        Used to autofill forms. Pre-filled from your resume. Edit anything wrong.
       </p>
 
       <div class="field-row">
-        <div class="field">
-          <label>Full Name</label>
-          <input type="text" id="profile_name" placeholder="Will be extracted...">
-        </div>
-        <div class="field">
-          <label>Email</label>
-          <input type="email" id="profile_email" placeholder="Will be extracted...">
-        </div>
+        <div class="field"><label>Full Name</label><input type="text" id="profile_name" placeholder="..."></div>
+        <div class="field"><label>Email</label><input type="email" id="profile_email" placeholder="..."></div>
       </div>
-
       <div class="field-row">
-        <div class="field">
-          <label>Phone</label>
-          <input type="tel" id="profile_phone" placeholder="Will be extracted...">
-        </div>
-        <div class="field">
-          <label>LinkedIn URL</label>
-          <input type="url" id="profile_linkedin" placeholder="Will be extracted...">
-        </div>
+        <div class="field"><label>Phone</label><input type="tel" id="profile_phone" placeholder="..."></div>
+        <div class="field"><label>LinkedIn</label><input type="url" id="profile_linkedin" placeholder="..."></div>
       </div>
-
       <div class="field-row">
-        <div class="field">
-          <label>GitHub URL</label>
-          <input type="url" id="profile_github" placeholder="Will be extracted...">
-        </div>
-        <div class="field">
-          <label>Website / Portfolio</label>
-          <input type="url" id="profile_website" placeholder="Will be extracted...">
-        </div>
+        <div class="field"><label>GitHub</label><input type="url" id="profile_github" placeholder="..."></div>
+        <div class="field"><label>Website</label><input type="url" id="profile_website" placeholder="..."></div>
       </div>
-
-      <div class="field">
-        <label>Address / Location</label>
-        <input type="text" id="profile_address" placeholder="Will be extracted...">
-      </div>
-
-      <div class="field">
-        <label>Work Authorization</label>
-        <input type="text" id="profile_work_authorization" placeholder="Will be extracted...">
-      </div>
+      <div class="field"><label>Address</label><input type="text" id="profile_address" placeholder="..."></div>
+      <div class="field"><label>Work Authorization</label><input type="text" id="profile_work_authorization" placeholder="..."></div>
     </section>
 
     <!-- Saved Answers -->
     <section>
       <div class="section-header">
         <h2>💾 Saved Answers</h2>
-        <span class="badge badge-optional">AUTO-SAVED FROM FORMS</span>
       </div>
-      <p class="section-desc">
-        Answers generated with the ✨ AI button on application forms are saved here for reuse.
-      </p>
       <div id="saved-answers-list"></div>
     </section>
 
     <!-- Save -->
     <div class="save-bar">
-      <button id="save-btn" class="btn btn-primary">💾 Save All Settings</button>
+      <button id="save-btn" class="btn btn-primary">💾 Save</button>
       <span id="save-msg" class="save-msg"></span>
     </div>
   </div>
