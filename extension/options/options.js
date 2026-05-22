@@ -362,8 +362,145 @@ document.getElementById('llm_model').addEventListener('change', () => {
   updateConfigStatus();
 });
 
-// --- Resume Data Display ---
-function renderResumeData() {
+// --- Resume Data Editor ---
+function getResumeData() {
+  try {
+    var raw = document.getElementById('rd-json-editor').value;
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { rawSections: {}, extractedFields: {} };
+}
+
+function updateFromEditors() {
+  var data = getResumeData();
+  if (!data.rawSections) data.rawSections = {};
+  if (!data.extractedFields) data.extractedFields = {};
+  
+  // Skills
+  var skillsVal = document.getElementById('rd_skills').value.trim();
+  data.rawSections.skills = skillsVal ? skillsVal.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; }) : [];
+  
+  // Languages
+  var langsVal = document.getElementById('rd_languages').value.trim();
+  data.rawSections.languages = langsVal ? langsVal.split(',').map(function(l) { return l.trim(); }).filter(function(l) { return l; }) : [];
+  
+  document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+  saveResumeData(data);
+  renderResumeDataDisplay(data);
+}
+
+function saveResumeData(data) {
+  try { chrome.storage.sync.set({ resume_full_data: JSON.stringify(data) }); } catch(e) {}
+}
+
+function saveResumeDataDebounced() {
+  clearTimeout(window._rdSaveTimer);
+  window._rdSaveTimer = setTimeout(function() {
+    var data = getResumeData();
+    renderResumeDataDisplay(data);
+    saveResumeData(data);
+  }, 500);
+}
+
+// Add experience item
+document.getElementById('rd-exp-add').onclick = function() {
+  var data = getResumeData();
+  if (!data.rawSections) data.rawSections = {};
+  if (!data.rawSections.experience) data.rawSections.experience = [];
+  var title = document.getElementById('rd-exp-title').value.trim();
+  var company = document.getElementById('rd-exp-company').value.trim();
+  var dates = document.getElementById('rd-exp-dates').value.trim();
+  if (!title && !company) return;
+  data.rawSections.experience.push({ title: title, company: company, start_date: dates.split(' - ')[0] || '', end_date: dates.split(' - ')[1] || '' });
+  document.getElementById('rd-exp-title').value = '';
+  document.getElementById('rd-exp-company').value = '';
+  document.getElementById('rd-exp-dates').value = '';
+  document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+  saveResumeData(data);
+  renderEditableLists(data);
+  renderResumeDataDisplay(data);
+};
+
+// Add education item
+document.getElementById('rd-edu-add').onclick = function() {
+  var data = getResumeData();
+  if (!data.rawSections) data.rawSections = {};
+  if (!data.rawSections.education) data.rawSections.education = [];
+  var degree = document.getElementById('rd-edu-degree').value.trim();
+  var school = document.getElementById('rd-edu-school').value.trim();
+  var dates = document.getElementById('rd-edu-dates').value.trim();
+  if (!degree && !school) return;
+  data.rawSections.education.push({ degree: degree, school: school, start_date: dates.split(' - ')[0] || '', end_date: dates.split(' - ')[1] || '' });
+  document.getElementById('rd-edu-degree').value = '';
+  document.getElementById('rd-edu-school').value = '';
+  document.getElementById('rd-edu-dates').value = '';
+  document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+  saveResumeData(data);
+  renderEditableLists(data);
+  renderResumeDataDisplay(data);
+};
+
+// Delete from a list (delegated)
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('rd-list-item-del')) {
+    var key = e.target.dataset.list;
+    var idx = parseInt(e.target.dataset.index);
+    var data = getResumeData();
+    if (data.rawSections && data.rawSections[key]) {
+      data.rawSections[key].splice(idx, 1);
+      document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
+      saveResumeData(data);
+      renderEditableLists(data);
+      renderResumeDataDisplay(data);
+    }
+  }
+});
+
+// Toggle JSON editor
+document.getElementById('toggle-json-editor').onclick = function() {
+  var area = document.getElementById('json-editor-area');
+  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+  this.textContent = area.style.display === 'none' ? 'Edit Raw JSON' : 'Hide Raw JSON';
+};
+
+// Populate editable lists from data
+function renderEditableLists(data) {
+  var sections = data.rawSections || {};
+  
+  // Experience list
+  var expList = document.getElementById('rd-experience-list');
+  if (expList) {
+    expList.innerHTML = (sections.experience || []).map(function(item, i) {
+      return '<div class="rd-list-item"><span class="rd-list-item-text">' + escHtml(item.title || '') + ' @ ' + escHtml(item.company || '') + '</span><button class="rd-list-item-del" data-list="experience" data-index="' + i + '">✕</button></div>';
+    }).join('');
+  }
+  
+  // Education list
+  var eduList = document.getElementById('rd-education-list');
+  if (eduList) {
+    eduList.innerHTML = (sections.education || []).map(function(item, i) {
+      return '<div class="rd-list-item"><span class="rd-list-item-text">' + escHtml(item.degree || '') + ' @ ' + escHtml(item.school || '') + '</span><button class="rd-list-item-del" data-list="education" data-index="' + i + '">✕</button></div>';
+    }).join('');
+  }
+  
+  // Skills input
+  var skillsInput = document.getElementById('rd_skills');
+  if (skillsInput && sections.skills) skillsInput.value = sections.skills.join(', ');
+  
+  // Languages input
+  var langsInput = document.getElementById('rd_languages');
+  if (langsInput && sections.languages) langsInput.value = sections.languages.join(', ');
+}
+
+// Auto-save when skills/languages change
+document.getElementById('rd_skills').addEventListener('input', updateFromEditors);
+document.getElementById('rd_languages').addEventListener('input', updateFromEditors);
+document.getElementById('rd-json-editor').addEventListener('input', function() {
+  saveResumeDataDebounced();
+});
+
+
+function renderResumeDataDisplay(data) {
   var el = document.getElementById('resume-data-content');
   var badge = document.getElementById('resume-data-badge');
   if (!el) return;

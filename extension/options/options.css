@@ -459,3 +459,60 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
   font-size: 11px;
   font-weight: 500;
 }
+
+/* Resume data editor */
+.rd-editor-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.rd-editor-field {
+  flex: 1;
+}
+.rd-editor-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.rd-list {
+  margin-bottom: 4px;
+}
+.rd-list-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: #f9fafb;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.rd-list-item-text { flex: 1; }
+.rd-list-item-del {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+}
+.rd-list-item-del:hover { color: #ef4444; }
+.rd-add-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.rd-add-row input {
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+.rd-add-row .btn-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}

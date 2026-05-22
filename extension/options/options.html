@@ -115,18 +115,65 @@
       <div class="field"><label>Professional Summary</label><textarea id="profile_summary" rows="3" placeholder="..."></textarea></div>
     </section>
 
-    <!-- Full Resume Data (collapsible) -->
+    <!-- Full Resume Data (editable) -->
     <section>
       <div class="section-header">
         <h2>📋 Full Resume Data</h2>
         <span id="resume-data-badge" class="config-badge untested" style="font-size:9px">No data</span>
+        <button id="toggle-json-editor" class="btn btn-sm" style="margin-left:auto">Edit Raw JSON</button>
       </div>
       <p class="section-desc">
-        Extracted from your resume. Used as context when generating AI answers on application forms.
-        Re-extract from PDF to update.
+        Used as context for AI answers on application forms. Edit below or re-extract from PDF.
+        Changes save automatically.
       </p>
-      <div id="resume-data-content">
-        <p class="empty-state">Extract your resume to see skills, experience, education, and more.</p>
+
+      <!-- Skills (simple tags) -->
+      <div class="rd-editor-row">
+        <div class="rd-editor-field">
+          <label>Skills (comma separated)</label>
+          <input type="text" id="rd_skills" placeholder="Python, MATLAB, Flight Performance...">
+        </div>
+        <div class="rd-editor-field">
+          <label>Languages (comma separated)</label>
+          <input type="text" id="rd_languages" placeholder="English, Hindi, French...">
+        </div>
+      </div>
+
+      <!-- Experience quick add -->
+      <div class="rd-editor-row">
+        <div class="rd-editor-field" style="flex:2">
+          <label>Experience</label>
+          <div id="rd-experience-list" class="rd-list"></div>
+          <div class="rd-add-row">
+            <input type="text" id="rd-exp-title" placeholder="Title" style="flex:2">
+            <input type="text" id="rd-exp-company" placeholder="Company" style="flex:2">
+            <input type="text" id="rd-exp-dates" placeholder="Start - End" style="flex:1">
+            <button id="rd-exp-add" class="btn btn-sm">+ Add</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Education quick add -->
+      <div class="rd-editor-row">
+        <div class="rd-editor-field" style="flex:2">
+          <label>Education</label>
+          <div id="rd-education-list" class="rd-list"></div>
+          <div class="rd-add-row">
+            <input type="text" id="rd-edu-degree" placeholder="Degree" style="flex:2">
+            <input type="text" id="rd-edu-school" placeholder="School" style="flex:2">
+            <input type="text" id="rd-edu-dates" placeholder="Start - End" style="flex:1">
+            <button id="rd-edu-add" class="btn btn-sm">+ Add</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Read-only display + raw JSON editor -->
+      <div id="resume-data-content" style="margin-bottom:8px">
+        <p class="empty-state">Extract your resume to see structured data here.</p>
+      </div>
+      <div id="json-editor-area" style="display:none">
+        <label>Raw JSON <span style="font-weight:normal;color:#9ca3af">(edit carefully)</span></label>
+        <textarea id="rd-json-editor" rows="10" style="font-family:monospace;font-size:11px"></textarea>
       </div>
     </section>
 
