@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'llm_base_url', 'llm_api_key', 'llm_model',
     'profile_name', 'profile_email', 'profile_phone',
     'profile_linkedin', 'profile_github', 'profile_website',
-    'profile_address', 'profile_work_authorization',
+    'profile_address', 'profile_work_authorization', 'profile_summary',
     'resume_text',
   ];
   fields.forEach(f => {
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     extractAbort = new AbortController();
 
     try {
-      const prompt = 'Extract JSON from resume. Keys: name, email, phone, linkedin, github, website, address, work_authorization. Use empty string for missing values. No null. JSON only.';
+      const prompt = 'Extract full resume data as JSON. Include: name, email, phone, linkedin, github, website, address, work_authorization, summary, skills (array), experience (array of {company, title, start_date, end_date, description}), education (array of {school, degree, start_date, end_date}), languages, publications (array), projects (array of {name, description}). Use empty string for missing values. No null. Arrays can be empty. JSON only.';
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
@@ -124,12 +124,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       const s = raw.indexOf('{'), e = raw.lastIndexOf('}') + 1;
       if (s === -1 || e <= s) throw new Error('Could not parse API response as JSON');
       const profile = JSON.parse(raw.slice(s, e));
-      const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
+      const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization', profile_summary: 'summary' };
+      // Store full resume data for AI context
+      var fullData = { extractedFields: {}, rawSections: {} };
+      for (var k in profile) { if (typeof profile[k] === 'object' || Array.isArray(profile[k])) { fullData.rawSections[k] = profile[k]; } else { fullData.extractedFields[k] = profile[k]; } }
       let filled = 0;
       for (const [id, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
         if (profile[key] && profile[key].trim()) { el.value = profile[key].trim(); filled++; }
       }
+      // Save full resume data for AI context
+      try { chrome.storage.sync.set({ resume_full_data: JSON.stringify(fullData) }); } catch(e) {}
       // Auto-save extracted profile
       if (typeof debouncedSave === 'function') debouncedSave();
       statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
