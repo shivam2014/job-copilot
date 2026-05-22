@@ -14,3 +14,4 @@ package-lock.json
 
 # Extension build artifacts
 *.zip
+node_modules/
