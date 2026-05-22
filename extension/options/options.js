@@ -210,6 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load token usage on page open
   setTimeout(renderTokenUsage, 500);
+  setTimeout(renderResumeData, 600);
   
   // Do an initial save to persist any loaded values
   setTimeout(autoSave, 1000);
@@ -360,6 +361,100 @@ document.getElementById('llm_model').addEventListener('change', () => {
   chrome.storage.sync.remove('config_tested');
   updateConfigStatus();
 });
+
+// --- Resume Data Display ---
+function renderResumeData() {
+  var el = document.getElementById('resume-data-content');
+  var badge = document.getElementById('resume-data-badge');
+  if (!el) return;
+  chrome.storage.sync.get('resume_full_data', function(result) {
+    if (!result.resume_full_data) {
+      el.innerHTML = '<p class="empty-state">No resume data yet. Upload a PDF and extract your profile.</p>';
+      if (badge) { badge.textContent = 'No data'; badge.className = 'config-badge untested'; }
+      return;
+    }
+    try {
+      var data = JSON.parse(result.resume_full_data);
+      var sections = data.rawSections || {};
+      var extracted = data.extractedFields || {};
+      var html = '';
+
+      // Summary
+      if (extracted.summary) {
+        html += '<div class="rd-section"><div class="rd-section-title">Summary</div>';
+        html += '<div class="rd-item">' + escHtml(extracted.summary) + '</div></div>';
+      }
+
+      // Skills
+      if (sections.skills && sections.skills.length > 0) {
+        html += '<div class="rd-section"><div class="rd-section-title">Skills (' + sections.skills.length + ')</div>';
+        html += '<div class="rd-tags">';
+        sections.skills.forEach(function(s) { html += '<span class="rd-tag">' + escHtml(s) + '</span>'; });
+        html += '</div></div>';
+      }
+
+      // Experience
+      if (sections.experience && sections.experience.length > 0) {
+        html += '<div class="rd-section"><div class="rd-section-title">Experience (' + sections.experience.length + ')</div>';
+        sections.experience.forEach(function(e) {
+          html += '<div class="rd-item">';
+          html += '<div class="rd-item-title">' + escHtml(e.title || '') + '</div>';
+          html += '<div class="rd-item-sub">' + escHtml(e.company || '') + ' | ' + (e.start_date || '') + ' - ' + (e.end_date || '') + '</div>';
+          if (e.description) html += '<div class="rd-item-desc">' + escHtml(e.description) + '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Education
+      if (sections.education && sections.education.length > 0) {
+        html += '<div class="rd-section"><div class="rd-section-title">Education (' + sections.education.length + ')</div>';
+        sections.education.forEach(function(e) {
+          html += '<div class="rd-item">';
+          html += '<div class="rd-item-title">' + escHtml(e.degree || '') + '</div>';
+          html += '<div class="rd-item-sub">' + escHtml(e.school || '') + ' | ' + (e.start_date || '') + ' - ' + (e.end_date || '') + '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Languages
+      if (sections.languages && sections.languages.length > 0) {
+        html += '<div class="rd-section"><div class="rd-section-title">Languages</div>';
+        html += '<div class="rd-tags">';
+        sections.languages.forEach(function(l) { html += '<span class="rd-tag">' + escHtml(l) + '</span>'; });
+        html += '</div></div>';
+      }
+
+      // Projects
+      if (sections.projects && sections.projects.length > 0) {
+        html += '<div class="rd-section"><div class="rd-section-title">Projects (' + sections.projects.length + ')</div>';
+        sections.projects.forEach(function(p) {
+          html += '<div class="rd-item">';
+          html += '<div class="rd-item-title">' + escHtml(p.name || '') + '</div>';
+          if (p.description) html += '<div class="rd-item-desc">' + escHtml(p.description) + '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      // Publications
+      if (sections.publications && sections.publications.length > 0) {
+        html += '<div class="rd-section"><div class="rd-section-title">Publications (' + sections.publications.length + ')</div>';
+        sections.publications.forEach(function(p) {
+          html += '<div class="rd-item">' + escHtml(typeof p === 'string' ? p : (p.title || p.name || JSON.stringify(p))) + '</div>';
+        });
+        html += '</div>';
+      }
+
+      if (!html) html = '<p class="empty-state">Data extracted but no structured sections found. Re-extract from PDF.</p>';
+      el.innerHTML = html;
+      if (badge) { badge.textContent = data.rawSections ? Object.keys(data.rawSections).length + ' sections' : '1 section'; badge.className = 'config-badge connected'; }
+    } catch(e) {
+      el.innerHTML = '<p class="empty-state">Error parsing resume data: ' + e.message + '</p>';
+    }
+  });
+}
 
 // --- Token Usage ---
 async function renderTokenUsage() {

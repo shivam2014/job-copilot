@@ -409,3 +409,53 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
   0%, 100% { border-color: #f59e0b; }
   50% { border-color: #fbbf24; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1); }
 }
+
+/* Resume data display */
+.rd-section {
+  margin-bottom: 12px;
+}
+.rd-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.rd-item {
+  padding: 8px 10px;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.rd-item-title {
+  font-weight: 600;
+  color: #1f2937;
+}
+.rd-item-sub {
+  color: #6b7280;
+  font-size: 11px;
+  margin-top: 2px;
+}
+.rd-item-desc {
+  color: #4b5563;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.rd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rd-tag {
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
