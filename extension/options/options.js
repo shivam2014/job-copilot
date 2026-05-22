@@ -433,7 +433,13 @@ document.getElementById('rd-exp-save').onclick = function() {
   var end = endM && endY ? endM + '/' + endY : (endM || endY);
   var desc = document.getElementById('rd-exp-desc').value.trim();
   if (!title && !company) return;
-  data.rawSections.experience.push({ title: title, company: company, start_date: start, end_date: end, description: desc });
+    var editIdx = document.getElementById('rd-exp-form').dataset.editIndex;
+  if (editIdx !== undefined && data.rawSections.experience[editIdx]) {
+    data.rawSections.experience[editIdx] = { title: title, company: company, start_date: start, end_date: end, description: desc };
+    delete document.getElementById('rd-exp-form').dataset.editIndex;
+  } else {
+    data.rawSections.experience.push({ title: title, company: company, start_date: start, end_date: end, description: desc });
+  }
   document.getElementById('rd-exp-title').value = '';
   document.getElementById('rd-exp-company').value = '';
   document.getElementById('rd-exp-start').value = '';
@@ -472,7 +478,13 @@ document.getElementById('rd-edu-save').onclick = function() {
   var start = startM && startY ? startM + '/' + startY : (startM || startY);
   var end = endM && endY ? endM + '/' + endY : (endM || endY);
   if (!degree && !school) return;
-  data.rawSections.education.push({ degree: degree, school: school, start_date: start, end_date: end });
+    var editIdx = document.getElementById('rd-edu-form').dataset.editIndex;
+  if (editIdx !== undefined && data.rawSections.education[editIdx]) {
+    data.rawSections.education[editIdx] = { degree: degree, school: school, start_date: start, end_date: end };
+    delete document.getElementById('rd-edu-form').dataset.editIndex;
+  } else {
+    data.rawSections.education.push({ degree: degree, school: school, start_date: start, end_date: end });
+  }
   document.getElementById('rd-edu-degree').value = '';
   document.getElementById('rd-edu-school').value = '';
   document.getElementById('rd-edu-start').value = '';
@@ -489,6 +501,45 @@ document.getElementById('rd-edu-save').onclick = function() {
 
 // Delete from a list (delegated)
 document.addEventListener('click', function(e) {
+  // Edit card
+  if (e.target.classList.contains('rd-card-edit')) {
+    var list = e.target.dataset.list;
+    var idx = parseInt(e.target.dataset.index);
+    var data = getResumeData();
+    var items = data.rawSections && data.rawSections[list];
+    if (!items || !items[idx]) return;
+    var item = items[idx];
+    if (list === 'experience') {
+      document.getElementById('rd-exp-title').value = item.title || '';
+      document.getElementById('rd-exp-company').value = item.company || '';
+      var parts = (item.start_date || '').split('/');
+      document.getElementById('rd-exp-start').value = parts[0] || '';
+      document.getElementById('rd-exp-start-y').value = parts[1] || '';
+      parts = (item.end_date || '').split('/');
+      document.getElementById('rd-exp-end').value = parts[0] || '';
+      document.getElementById('rd-exp-end-y').value = parts[1] || '';
+      document.getElementById('rd-exp-desc').value = item.description || '';
+      document.getElementById('rd-exp-form').style.display = 'block';
+      document.getElementById('rd-exp-show-form').style.display = 'none';
+      document.getElementById('rd-exp-form').dataset.editIndex = idx;
+      document.getElementById('rd-exp-save').textContent = 'Update';
+    } else if (list === 'education') {
+      document.getElementById('rd-edu-degree').value = item.degree || '';
+      document.getElementById('rd-edu-school').value = item.school || '';
+      var parts = (item.start_date || '').split('/');
+      document.getElementById('rd-edu-start').value = parts[0] || '';
+      document.getElementById('rd-edu-start-y').value = parts[1] || '';
+      parts = (item.end_date || '').split('/');
+      document.getElementById('rd-edu-end').value = parts[0] || '';
+      document.getElementById('rd-edu-end-y').value = parts[1] || '';
+      document.getElementById('rd-edu-form').style.display = 'block';
+      document.getElementById('rd-edu-show-form').style.display = 'none';
+      document.getElementById('rd-edu-form').dataset.editIndex = idx;
+      document.getElementById('rd-edu-save').textContent = 'Update';
+    }
+    return;
+  }
+  
   if (e.target.classList.contains('rd-card-del') || e.target.classList.contains('rd-list-item-del') || e.target.classList.contains('rd-tag-del')) {
     var section = e.target.dataset.section;
     if (section !== undefined) {
