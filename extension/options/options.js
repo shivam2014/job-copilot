@@ -125,8 +125,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('extract-btn').textContent = '✅ Already extracted from PDF';
       }
     } catch (err) {
-      statusEl.textContent = '❌ ' + err.message;
+      if (err.name === 'AbortError') {
+        statusEl.textContent = '❌ Cancelled';
+        statusEl.className = 'field-hint error';
+      } else {
+        statusEl.textContent = '❌ ' + err.message;
+        statusEl.className = 'field-hint error';
+      }
+    }
+    // Re-enable button (unless it was a PDF extraction that succeeded)
+    if (!sourceLabel) {
+      btn.disabled = false;
+      btn.textContent = '🔍 Extract Profile';
+    }
+    statusEl.style.cursor = 'default';
+    statusEl.onclick = null;
+  }
+
+  // --- Cancel extraction ---
+  function cancelExtraction() {
+    if (extractAbort) {
+      extractAbort.abort();
+      extractAbort = null;
+      const statusEl = document.getElementById('extract-status');
+      statusEl.textContent = '❌ Cancelled';
       statusEl.className = 'field-hint error';
+      statusEl.style.cursor = 'default';
+      statusEl.onclick = null;
+      const btn = document.getElementById('extract-btn');
+      btn.disabled = false;
+      btn.textContent = '🔍 Extract Profile';
     }
   }
 
