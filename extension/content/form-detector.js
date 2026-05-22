@@ -245,3 +245,18 @@ const FormDetector = {
     wrapper.appendChild(btn);
   }
 };
+
+// Debug logging — call this to log all detected fields to console
+FormDetector.debugLog = function() {
+  const fields = this.detect();
+  console.log('🔍 Job Copilot — Form Detection Report');
+  console.log('======================================');
+  console.log(`Personal fields: ${fields.personal.length}`);
+  fields.personal.forEach(f => console.log(`  📋 [${f.name}] "${f.label}" → ${f.el.tagName} ${f.el.type || ''}`));
+  console.log(`AI Questions (textareas): ${fields.questions.length}`);
+  fields.questions.forEach(f => console.log(`  💬 "${f.label}"`));
+  console.log(`Dropdowns: ${fields.selects.length}`);
+  console.log(`File uploads: ${fields.files.length}`);
+  console.log('======================================');
+  return fields;
+};

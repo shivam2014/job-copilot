@@ -1,21 +1,21 @@
-// Options page — resume upload → LLM extract → edit profile → save
+// Options page — PDF upload → extract text → LLM extract profile → edit → save
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Load saved settings into form
   const result = await chrome.storage.sync.get(null);
+  
+  // Load saved values
   const fields = [
     'profile_name', 'profile_email', 'profile_phone',
     'profile_linkedin', 'profile_github', 'profile_website',
     'profile_address', 'profile_work_authorization',
     'resume_text', 'llm_base_url', 'llm_api_key', 'llm_model',
   ];
-
   fields.forEach(f => {
     const el = document.getElementById(f);
     if (el && result[f] !== undefined) el.value = result[f];
   });
 
-  // Set defaults if empty
+  // Set defaults
   if (!document.getElementById('llm_base_url').value)
     document.getElementById('llm_base_url').value = 'http://localhost:19530/v1';
   if (!document.getElementById('llm_api_key').value)
@@ -23,26 +23,90 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!document.getElementById('llm_model').value)
     document.getElementById('llm_model').value = 'deepseek-v4-flash-2';
 
-  // Load saved Q&A bank
   renderSavedAnswers(result.saved_answers || []);
 
-  // --- Extract Profile from Resume ---
+  // --- PDF Upload ---
+  const uploadArea = document.getElementById('upload-area');
+  const fileInput = document.getElementById('resume_file');
+  const uploadStatus = document.getElementById('upload-status');
+  const uploadPrompt = document.getElementById('upload-prompt');
+
+  uploadArea.onclick = () => fileInput.click();
+
+  uploadArea.ondragover = (e) => {
+    e.preventDefault();
+    uploadArea.classList.add('dragover');
+  };
+  uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
+  uploadArea.ondrop = (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handlePDF(e.dataTransfer.files[0]);
+  };
+
+  fileInput.onchange = (e) => {
+    if (e.target.files[0]) handlePDF(e.target.files[0]);
+  };
+
+  async function handlePDF(file) {
+    if (!file.name.endsWith('.pdf')) {
+      showUploadStatus('Please upload a PDF file', 'error');
+      return;
+    }
+
+    showUploadStatus(`Reading ${file.name}...`, 'loading');
+
+    try {
+      // Read file as ArrayBuffer → send to bg for text extraction
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = Array.from(new Uint8Array(arrayBuffer));
+
+      const resp = await chrome.runtime.sendMessage({
+        type: 'extract_pdf_text',
+        data: bytes,
+      });
+
+      if (resp.error) throw new Error(resp.error);
+
+      document.getElementById('resume_text').value = resp.text;
+      showUploadStatus(`✅ ${file.name} — ${resp.text.length} chars extracted`, 'success');
+      
+      // Auto-trigger extraction
+      document.getElementById('extract-btn').click();
+    } catch (err) {
+      showUploadStatus(`❌ ${err.message}`, 'error');
+    }
+  }
+
+  function showUploadStatus(msg, type) {
+    uploadPrompt.style.display = 'none';
+    uploadStatus.style.display = 'block';
+    uploadStatus.className = 'upload-status ' + type;
+    uploadStatus.textContent = msg;
+  }
+
+  // --- Extract Profile (sends resume text + LLM config to background) ---
   document.getElementById('extract-btn').onclick = async () => {
     const resumeText = document.getElementById('resume_text').value.trim();
     if (!resumeText) {
-      setExtractStatus('Paste your resume text first', 'error');
+      setExtractStatus('Upload a PDF or paste resume text first', 'error');
       return;
     }
 
     const btn = document.getElementById('extract-btn');
     btn.disabled = true;
     btn.textContent = '⏳ Extracting...';
-    setExtractStatus('Reading your resume...', 'loading');
+    setExtractStatus('Calling AI to parse your resume...', 'loading');
 
     try {
-      const extracted = await extractProfileFromResume(resumeText);
-      
-      // Populate fields
+      const resp = await chrome.runtime.sendMessage({
+        type: 'extract_profile_from_text',
+        text: resumeText,
+      });
+
+      if (resp.error) throw new Error(resp.error);
+
+      const profile = resp.profile;
       const fieldMap = {
         profile_name: 'name',
         profile_email: 'email',
@@ -57,8 +121,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       let filled = 0;
       for (const [fieldId, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(fieldId);
-        if (extracted[key] && extracted[key].trim()) {
-          el.value = extracted[key].trim();
+        if (profile[key] && profile[key].trim()) {
+          el.value = profile[key].trim();
           filled++;
         }
       }
@@ -75,11 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Save ---
   document.getElementById('save-btn').onclick = async () => {
     const data = {};
-    fields.forEach(f => {
-      data[f] = document.getElementById(f).value.trim();
-    });
-
-    // Preserve saved_answers if they exist
+    fields.forEach(f => { data[f] = document.getElementById(f).value.trim(); });
     const existing = await chrome.storage.sync.get('saved_answers');
     if (existing.saved_answers) data.saved_answers = existing.saved_answers;
 
@@ -92,87 +152,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 });
 
-// --- LLM Extraction ---
-async function extractProfileFromResume(resumeText) {
-  const systemPrompt = `You are parsing a resume. Extract the following fields from the resume text. 
-Return ONLY a JSON object with these exact keys (all lowercase):
-- name: full name
-- email: email address
-- phone: phone number (include country code if present)
-- linkedin: LinkedIn URL (if present, otherwise "")
-- github: GitHub URL (if present, otherwise "")
-- website: personal website or portfolio URL (if present, otherwise "")
-- address: city, country (infer from location mentioned or contact section)
-- work_authorization: work authorization or visa status (if mentioned, otherwise "")
-
-If a field is not found in the resume, use "" (empty string).
-Do NOT include any text outside the JSON object.`;
-
-  const config = await new LLMClient.constructor().getConfig();
-  // Override getConfig to use the current form values
-  const baseUrl = (document.getElementById('llm_base_url').value || 'http://localhost:19530/v1').replace(/\/+$/, '');
-  const apiKey = document.getElementById('llm_api_key').value || 'dummy';
-  const model = document.getElementById('llm_model').value || 'deepseek-v4-flash-2';
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Resume:\n\n${resumeText}` },
-      ],
-      temperature: 0.05,
-      max_tokens: 500,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`API ${response.status}: ${err}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices[0].message.content.trim();
-  
-  // Parse JSON from response (handle possible markdown fencing)
-  let jsonStr = content;
-  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) jsonStr = jsonMatch[1];
-  
-  // Find first { to last }
-  const start = jsonStr.indexOf('{');
-  const end = jsonStr.lastIndexOf('}');
-  if (start === -1 || end === -1) throw new Error('Could not parse LLM response as JSON');
-  
-  return JSON.parse(jsonStr.slice(start, end + 1));
-}
-
 // --- Saved Answers ---
-async function renderSavedAnswers(answers) {
+function renderSavedAnswers(answers) {
   const container = document.getElementById('saved-answers-list');
   if (!answers || answers.length === 0) {
-    container.innerHTML = '<p class="empty-state">No saved answers yet. They\'ll appear after you use the AI button on application forms.</p>';
+    container.innerHTML = '<p class="empty-state">No saved answers yet. Use the ✨ AI button on application forms to generate and save answers.</p>';
     return;
   }
-  
   container.innerHTML = answers.map((qa, i) => `
     <div class="saved-qa">
-      <div class="qa-question"><strong>Q:</strong> ${escapeHtml(qa.question)}</div>
-      <div class="qa-answer"><strong>A:</strong> ${escapeHtml(qa.answer)}</div>
+      <div class="qa-question"><strong>Q:</strong> ${escHtml(qa.question)}</div>
+      <div class="qa-answer"><strong>A:</strong> ${escHtml(qa.answer)}</div>
       <button class="qa-delete" data-index="${i}">✕</button>
     </div>
   `).join('');
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
 }
 
 function setExtractStatus(text, type) {
@@ -188,7 +187,7 @@ function showMsg(text, type) {
   setTimeout(() => { el.textContent = ''; el.className = 'save-msg'; }, 4000);
 }
 
-// --- Delete saved answers ---
+// Delete saved answers
 document.addEventListener('click', async (e) => {
   if (e.target.classList.contains('qa-delete')) {
     const index = parseInt(e.target.dataset.index);

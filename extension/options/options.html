@@ -9,22 +9,31 @@
 <body>
   <div class="container">
     <h1>Job Copilot Settings</h1>
-    <p class="subtitle">Your profile is pre-filled from your resume via LLM. You review and edit. All data stays in your browser.</p>
+    <p class="subtitle">Your profile is extracted from your resume via AI. You review and edit. All data stays in your browser.</p>
 
-    <!-- Step 1: Upload Resume → Extract -->
+    <!-- Step 1: Upload Resume -->
     <section class="section-primary">
       <div class="section-header">
-        <h2>📄 Step 1: Upload Resume</h2>
+        <h2>📄 Step 1: Upload Your Resume</h2>
         <span class="badge badge-required">START HERE</span>
       </div>
       <p class="section-desc">
-        Paste your resume text below, then click <strong>"Extract Profile"</strong>. 
-        The AI reads your resume and fills the profile fields automatically. 
-        You can edit any field afterward.
+        Upload your resume <strong>PDF</strong> or paste the text version. 
+        The AI reads it and fills your profile fields below. You can edit any field.
       </p>
       
+      <div class="upload-area" id="upload-area">
+        <div class="upload-prompt" id="upload-prompt">
+          <div class="upload-icon">📄</div>
+          <p><strong>Click to upload your resume PDF</strong></p>
+          <p class="upload-hint">or paste text in the box below</p>
+          <input type="file" id="resume_file" accept=".pdf" hidden>
+        </div>
+        <div class="upload-status" id="upload-status" style="display:none"></div>
+      </div>
+
       <div class="field">
-        <textarea id="resume_text" rows="8" placeholder="Paste your full resume text here..."></textarea>
+        <textarea id="resume_text" rows="8" placeholder="Or paste your resume text directly here..."></textarea>
       </div>
 
       <div class="inline-actions">
@@ -33,59 +42,58 @@
       </div>
     </section>
 
-    <!-- Step 2: Profile Fields (editable, pre-filled from extraction) -->
+    <!-- Step 2: Profile Fields -->
     <section>
       <div class="section-header">
         <h2>📋 Step 2: Review & Edit Profile</h2>
-        <span class="badge badge-optional">SOURCE OF TRUTH FOR FORM FILL</span>
+        <span class="badge badge-optional">USED TO FILL FORMS</span>
       </div>
       <p class="section-desc">
-        These values are used to <strong>autofill application forms</strong>. 
-        The AI pre-filled them from your resume above. Correct anything that looks wrong.
-        Only fields found on the application page get filled.
+        These values autofill application forms. AI pre-filled them from your resume. 
+        <strong>Correct anything that looks wrong</strong> — this is your source of truth.
       </p>
 
       <div class="field-row">
         <div class="field">
           <label>Full Name</label>
-          <input type="text" id="profile_name" placeholder="Extracted from resume...">
+          <input type="text" id="profile_name" placeholder="Will be extracted...">
         </div>
         <div class="field">
           <label>Email</label>
-          <input type="email" id="profile_email" placeholder="Extracted from resume...">
+          <input type="email" id="profile_email" placeholder="Will be extracted...">
         </div>
       </div>
 
       <div class="field-row">
         <div class="field">
           <label>Phone</label>
-          <input type="tel" id="profile_phone" placeholder="Extracted from resume...">
+          <input type="tel" id="profile_phone" placeholder="Will be extracted...">
         </div>
         <div class="field">
           <label>LinkedIn URL</label>
-          <input type="url" id="profile_linkedin" placeholder="Extracted from resume...">
+          <input type="url" id="profile_linkedin" placeholder="Will be extracted...">
         </div>
       </div>
 
       <div class="field-row">
         <div class="field">
           <label>GitHub URL</label>
-          <input type="url" id="profile_github" placeholder="Extracted from resume...">
+          <input type="url" id="profile_github" placeholder="Will be extracted...">
         </div>
         <div class="field">
           <label>Website / Portfolio</label>
-          <input type="url" id="profile_website" placeholder="Extracted from resume...">
+          <input type="url" id="profile_website" placeholder="Will be extracted...">
         </div>
       </div>
 
       <div class="field">
         <label>Address / Location</label>
-        <input type="text" id="profile_address" placeholder="Extracted from resume...">
+        <input type="text" id="profile_address" placeholder="Will be extracted...">
       </div>
 
       <div class="field">
         <label>Work Authorization</label>
-        <input type="text" id="profile_work_authorization" placeholder="Extracted from resume...">
+        <input type="text" id="profile_work_authorization" placeholder="Will be extracted...">
       </div>
     </section>
 
@@ -96,9 +104,8 @@
         <span class="badge badge-required">POWERS EXTRACTION + ANSWERS</span>
       </div>
       <p class="section-desc">
-        Any OpenAI-compatible endpoint. Used for <strong>extracting your profile</strong> from your resume,
-        and for <strong>generating answers</strong> to custom application questions that aren't in your profile
-        (e.g., "Why do you want to work here?").
+        Any OpenAI-compatible endpoint. Used to <strong>extract your profile</strong> from your resume
+        and <strong>generate answers</strong> to custom application questions.
       </p>
 
       <div class="field-row">
@@ -113,7 +120,6 @@
         <div class="field">
           <label>API Key</label>
           <input type="password" id="llm_api_key" placeholder="dummy">
-          <span class="field-hint">Most local endpoints accept "dummy"</span>
         </div>
         <div class="field">
           <label>Model Name</label>
@@ -122,20 +128,16 @@
       </div>
     </section>
 
-    <!-- Saved Q&A Bank (future) -->
+    <!-- Saved Answers -->
     <section>
       <div class="section-header">
         <h2>💾 Saved Answers</h2>
-        <span class="badge badge-optional">COMING SOON</span>
+        <span class="badge badge-optional">AUTO-SAVED FROM FORMS</span>
       </div>
       <p class="section-desc">
-        Answers you've generated for application questions can be saved here and reused 
-        when the same question appears in another application. 
-        <em>No saved answers yet. They'll appear here after you use the ✨ AI button on forms.</em>
+        Answers generated with the ✨ AI button on application forms are saved here for reuse.
       </p>
-      <div id="saved-answers-list">
-        <p class="empty-state">Fill an AI question on a job page to see it saved here.</p>
-      </div>
+      <div id="saved-answers-list"></div>
     </section>
 
     <!-- Save -->
@@ -145,7 +147,7 @@
     </div>
   </div>
 
-  <script src="../lib/llm-client.js"></script>
+  <script src="../lib/pdf-extract.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

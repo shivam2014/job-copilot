@@ -288,3 +288,46 @@ textarea {
   color: #991b1b;
   border-color: #fecaca;
 }
+
+/* Upload area */
+.upload-area {
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-bottom: 12px;
+}
+.upload-area:hover {
+  border-color: #3b82f6;
+  background: #f0f7ff;
+}
+.upload-area.dragover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+.upload-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+.upload-prompt p {
+  margin: 4px 0;
+  font-size: 14px;
+  color: #374151;
+}
+.upload-hint {
+  font-size: 12px !important;
+  color: #9ca3af !important;
+}
+.upload-status {
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.upload-status.success { background: #ecfdf5; color: #065f46; }
+.upload-status.error { background: #fef2f2; color: #991b1b; }
+.upload-status.loading { background: #eff6ff; color: #1e40af; }
+.upload-status .filename {
+  font-weight: 600;
+}

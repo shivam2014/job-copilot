@@ -16,6 +16,9 @@ async function init() {
 
     injectFloatingButton();
     injectAIAssistButtons();
+  // Debug: log detected fields to console
+  console.log("%c🔍 Job Copilot loaded", "font-weight:bold;color:#3b82f6");
+  setTimeout(() => FormDetector.debugLog(), 2000);
 
     // Notify popup if it opens
     chrome.runtime.sendMessage({

@@ -1,0 +1,24 @@
+{
+  "name": "job-copilot",
+  "version": "1.0.0",
+  "description": "AI-powered job application autofiller. Bring your own LLM endpoint.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shivam2014/job-copilot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/shivam2014/job-copilot/issues"
+  },
+  "homepage": "https://github.com/shivam2014/job-copilot#readme",
+  "dependencies": {
+    "pdfjs-dist": "^5.7.284"
+  }
+}
