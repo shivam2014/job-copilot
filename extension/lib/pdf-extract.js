@@ -23,3 +23,8 @@ export async function extractTextFromPDF(arrayBuffer) {
 
   return fullText.trim();
 }
+
+// Also expose globally for non-module scripts
+if (typeof window !== 'undefined') {
+  window.extractTextFromPDF = extractTextFromPDF;
+}
