@@ -547,7 +547,14 @@ function renderEditableLists(data) {
       html += '<button class="rd-card-del" data-list="experience" data-index="' + i + '">✕</button>';
       if (item.title) html += '<div class="rd-card-title">' + escHtml(item.title) + '</div>';
       if (item.company) html += '<div class="rd-card-sub">' + escHtml(item.company) + '</div>';
-      if (item.start_date || item.end_date) html += '<div class="rd-card-sub">' + escHtml(item.start_date || '') + ' - ' + escHtml(item.end_date || '') + '</div>';
+      if (item.start_date || item.end_date) {
+            var sd = item.start_date || '';
+            var ed = item.end_date || '';
+            var months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            if (sd.length === 7 && sd.indexOf('/') === 2) { var p = sd.split('/'); sd = months[parseInt(p[0])] + ' ' + p[1]; }
+            if (ed.length === 7 && ed.indexOf('/') === 2) { var p = ed.split('/'); ed = months[parseInt(p[0])] + ' ' + p[1]; }
+            html += '<div class="rd-card-sub">' + escHtml(sd) + ' - ' + escHtml(ed) + '</div>';
+          }
       if (item.description) html += '<div class="rd-card-desc">' + escHtml(item.description) + '</div>';
       html += '</div>';
       return html;
@@ -562,7 +569,14 @@ function renderEditableLists(data) {
       html += '<button class="rd-card-del" data-list="education" data-index="' + i + '">✕</button>';
       if (item.degree) html += '<div class="rd-card-title">' + escHtml(item.degree) + '</div>';
       if (item.school) html += '<div class="rd-card-sub">' + escHtml(item.school) + '</div>';
-      if (item.start_date || item.end_date) html += '<div class="rd-card-sub">' + escHtml(item.start_date || '') + ' - ' + escHtml(item.end_date || '') + '</div>';
+      if (item.start_date || item.end_date) {
+            var sd = item.start_date || '';
+            var ed = item.end_date || '';
+            var months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            if (sd.length === 7 && sd.indexOf('/') === 2) { var p = sd.split('/'); sd = months[parseInt(p[0])] + ' ' + p[1]; }
+            if (ed.length === 7 && ed.indexOf('/') === 2) { var p = ed.split('/'); ed = months[parseInt(p[0])] + ' ' + p[1]; }
+            html += '<div class="rd-card-sub">' + escHtml(sd) + ' - ' + escHtml(ed) + '</div>';
+          }
       html += '</div>';
       return html;
     }).join('');
