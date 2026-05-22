@@ -117,7 +117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         signal: extractAbort.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 4000) }], temperature: 0.01, max_tokens: 32000 }),
+        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 6000) }], temperature: 0.01, max_tokens: 32000 }),
       });
       if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(function() { return resp.statusText; })));
       const data = await resp.json();
