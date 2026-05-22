@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('llm_model').value = 'deepseek-v4-flash-2';
 
   renderSavedAnswers(result.saved_answers || []);
+  updateConfigStatus();
 
   // --- PDF Upload ---
   const uploadArea = document.getElementById('upload-area');

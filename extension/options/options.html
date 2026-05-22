@@ -24,11 +24,16 @@
     <section class="section-primary">
       <div class="section-header">
         <h2>⚙️ AI Engine</h2>
+        <span id="config-status" class="config-badge untested">⚠️ Untested</span>
       </div>
       <p class="section-desc">
-        Any OpenAI-compatible endpoint. After entering URL + key, click <strong>Fetch Models</strong>
-        to load available models. You can also type a model name manually.
+        Any OpenAI-compatible endpoint. Powers profile extraction from your resume (Step 2)
+        and generating answers on application forms.
       </p>
+      <div id="config-warning" class="config-warning" style="display:none">
+        <strong>🔧 Configure your AI Engine above</strong> — enter a valid API Base URL, Key, and Model,
+        then test the connection before using the extension.
+      </div>
 
       <div class="field">
         <label>API Base URL</label>
