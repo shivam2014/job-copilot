@@ -567,12 +567,24 @@ function renderEditableLists(data) {
 }
 
 // Auto-save when skills/languages change
-document.getElementById('rd_skills').addEventListener('input', updateFromEditors);
-document.getElementById('rd_languages').addEventListener('input', updateFromEditors);
-document.getElementById('rd-json-editor').addEventListener('input', function() {
-  saveResumeDataDebounced();
-});
+  // Skills/languages handled via tag add/delete (rd-skill-add, rd-lang-add)
+  document.getElementById('rd-json-editor').addEventListener('input', function() {
+    saveResumeDataDebounced();
+  });
 
+// --- Resume Data Loader (page-load entry) ---
+function renderResumeData() {
+  chrome.storage.sync.get('resume_full_data', function(result) {
+    if (result.resume_full_data) {
+      try {
+        var data = JSON.parse(result.resume_full_data);
+        renderTagLists(data);
+        renderEditableLists(data);
+        renderResumeDataDisplay(data);
+      } catch(e) {}
+    }
+  });
+}
 
 function renderResumeDataDisplay(data) {
   var el = document.getElementById('resume-data-content');
