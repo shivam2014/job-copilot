@@ -141,10 +141,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (start === -1) throw new Error('Unbalanced JSON');
 var jsonStr = raw.slice(start, end + 1);
       // Sanitize common LLM JSON issues: single quotes, trailing commas, truncation
-      jsonStr = jsonStr.replace(/[\u2018\u2019\u0027]/g, '"'); // Replace smart & ASCII single quotes with double
-      jsonStr = jsonStr.replace(/\u201c|\u201d/g, '"'); // Replace smart double quotes
-      jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Remove trailing commas before }
-      jsonStr = jsonStr.replace(/,\s*\]/g, ']'); // Remove trailing commas before ]
+      // Single quote fix moved to recovery
+      // Smart double quote fix moved to recovery
+      // Trailing comma fix moved to recovery
+      // Trailing comma fix moved to recovery
       // Fix unquoted keys moved to recovery (below)
       jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
       // Try parsing, if fails try to fix and retry
@@ -159,6 +159,11 @@ console.log('JC DEBUG jsonStr length:', jsonStr.length);
       } catch (e) {
         // Last resort: try finding valid JSON by scanning for patterns
         console.log('JC JSON parse error, trying recovery...');
+        // Try sanitizing common LLM JSON issues
+        jsonStr = jsonStr.replace(/['\u2018\u2019]/g, '"'); // Single quotes to double
+        jsonStr = jsonStr.replace(/\u201c|\u201d/g, '"'); // Smart double quotes
+        jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Trailing commas
+        jsonStr = jsonStr.replace(/,\s*\]/g, ']'); // Trailing commas
         // Fix unquoted keys (e.g. {name: "value"} -> {"name": "value"})
         jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
         // Try wrapping unquoted strings in single quotes (rare LLM output)
