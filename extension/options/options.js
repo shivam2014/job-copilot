@@ -595,6 +595,7 @@ function renderEditableLists(data) {
   if (expList) {
     expList.innerHTML = (sections.experience || []).map(function(item, i) {
       var html = '<div class="rd-card">';
+      html += '<button class="rd-card-edit" data-list="experience" data-index="' + i + '">Edit</button>';
       html += '<button class="rd-card-del" data-list="experience" data-index="' + i + '">✕</button>';
       if (item.title) html += '<div class="rd-card-title">' + escHtml(item.title) + '</div>';
       if (item.company) html += '<div class="rd-card-sub">' + escHtml(item.company) + '</div>';
@@ -617,6 +618,7 @@ function renderEditableLists(data) {
   if (eduList) {
     eduList.innerHTML = (sections.education || []).map(function(item, i) {
       var html = '<div class="rd-card">';
+      html += '<button class="rd-card-edit" data-list="education" data-index="' + i + '">Edit</button>';
       html += '<button class="rd-card-del" data-list="education" data-index="' + i + '">✕</button>';
       if (item.degree) html += '<div class="rd-card-title">' + escHtml(item.degree) + '</div>';
       if (item.school) html += '<div class="rd-card-sub">' + escHtml(item.school) + '</div>';
