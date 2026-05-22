@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'llm_base_url', 'llm_api_key', 'llm_model',
     'profile_name', 'profile_email', 'profile_phone',
     'profile_linkedin', 'profile_github', 'profile_website',
-    'profile_address', 'profile_work_authorization', 'profile_summary',
+    'profile_address', 'profile_work_authorization',
     'resume_text',
   ];
   fields.forEach(f => {
@@ -142,6 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       for (const [id, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
         if (profile[key] && profile[key].trim()) { el.value = profile[key].trim(); filled++; }
+      if (key === 'summary') { var rs = document.getElementById('rd_summary'); if (rs && profile.summary) rs.value = profile.summary; }
       }
       // Save full resume data for AI context
       try { chrome.storage.sync.set({ resume_full_data: JSON.stringify(fullData) }); } catch(e) {}
@@ -819,7 +820,8 @@ function renderEditableLists(data) {
     input.value = '';
     document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
     saveResumeData(data);
-    renderTagLists(data);
+    var se = document.getElementById('rd_summary'); if (se && data.extractedFields && data.extractedFields.summary) se.value = data.extractedFields.summary;
+  renderTagLists(data);
     renderResumeDataDisplay(data);
     input.focus();
   }
@@ -836,7 +838,8 @@ function renderEditableLists(data) {
     input.value = ''; level.value = '';
     document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
     saveResumeData(data);
-    renderTagLists(data);
+    var se = document.getElementById('rd_summary'); if (se && data.extractedFields && data.extractedFields.summary) se.value = data.extractedFields.summary;
+  renderTagLists(data);
     renderResumeDataDisplay(data);
     input.focus();
   }
@@ -847,12 +850,14 @@ function renderEditableLists(data) {
       data.rawSections[section].splice(index, 1);
       document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
       saveResumeData(data);
-      renderTagLists(data);
+      var se = document.getElementById('rd_summary'); if (se && data.extractedFields && data.extractedFields.summary) se.value = data.extractedFields.summary;
+  renderTagLists(data);
       renderResumeDataDisplay(data);
     }
   }
   
   // JSON editor auto-save
+  document.getElementById('rd_summary').addEventListener('input', function() { updateFromEditors(); saveResumeDataDebounced(); });
   document.getElementById('rd-json-editor').addEventListener('input', function() {
     saveResumeDataDebounced();
   });
@@ -863,7 +868,8 @@ function renderResumeData() {
       try {
         var data = JSON.parse(result.resume_full_data);
         document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
-        renderTagLists(data);
+        var se = document.getElementById('rd_summary'); if (se && data.extractedFields && data.extractedFields.summary) se.value = data.extractedFields.summary;
+  renderTagLists(data);
         renderEditableLists(data);
         renderResumeDataDisplay(data);
       } catch(e) {}
