@@ -21,11 +21,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('llm_base_url').value = 'http://localhost:19530/v1';
   if (!document.getElementById('llm_api_key').value)
     document.getElementById('llm_api_key').value = 'dummy';
-  if (!document.getElementById('llm_model').value)
-    document.getElementById('llm_model').value = 'deepseek-v4-flash-2';
+  // Model loaded on focus from endpoint's /v1/models
 
   renderSavedAnswers(result.saved_answers || []);
   updateConfigStatus();
+  checkModelNeeded();
 
   // --- PDF Upload ---
   const uploadArea = document.getElementById('upload-area');
@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Read LLM config directly from the form fields (user visible, always current)
     const baseUrl = (document.getElementById('llm_base_url').value || 'http://localhost:19530/v1').trim().replace(/\/+$/, '');
     const apiKey = document.getElementById('llm_api_key').value || 'dummy';
-    const model = document.getElementById('llm_model').value || 'deepseek-v4-flash-2';
+    const model = document.getElementById('llm_model').value.trim() || '';
 
     if (!baseUrl || baseUrl === '') {
       setExtractStatus('Enter your LLM API Base URL in Step 1 first', 'error');
@@ -484,9 +484,27 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
   }
 });
 
+// Check if model needs attention (URL+key filled but model empty)
+function checkModelNeeded() {
+  const baseUrl = document.getElementById('llm_base_url').value.trim();
+  const apiKey = document.getElementById('llm_api_key').value.trim();
+  const model = document.getElementById('llm_model').value.trim();
+  const hint = document.getElementById('model-count');
+  const modelInput = document.getElementById('llm_model');
+  
+  if (baseUrl && apiKey && !model && !hint.textContent.includes('model')) {
+    hint.textContent = '👆 Click here to load models from your endpoint';
+    hint.className = 'field-hint model-needed';
+    modelInput.classList.add('needs-attention');
+  } else if (model) {
+    modelInput.classList.remove('needs-attention');
+  }
+}
+
 // Reset fetch flag when URL or key changes
-document.getElementById('llm_base_url').addEventListener('change', () => { modelsFetched = false; });
-document.getElementById('llm_api_key').addEventListener('change', () => { modelsFetched = false; });
+document.getElementById('llm_base_url').addEventListener('change', () => { modelsFetched = false; checkModelNeeded(); });
+document.getElementById('llm_api_key').addEventListener('change', () => { modelsFetched = false; checkModelNeeded(); });
+document.getElementById('llm_model').addEventListener('input', () => { checkModelNeeded(); });
 
 // Press Enter in model field to test connection
 document.getElementById('llm_model').addEventListener('keydown', (e) => {

@@ -387,3 +387,25 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
   max-height: 100px;
   overflow-y: auto;
 }
+
+/* Model field hint pulse */
+#model-count.model-needed {
+  color: #d97706;
+  font-weight: 500;
+  animation: pulse-text 2s infinite;
+}
+@keyframes pulse-text {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Highlight the model input when it needs attention */
+#llm_model.needs-attention {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
+  animation: attention-pulse 2s infinite;
+}
+@keyframes attention-pulse {
+  0%, 100% { border-color: #f59e0b; }
+  50% { border-color: #fbbf24; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1); }
+}
