@@ -689,30 +689,9 @@ function renderResumeDataDisplay(data) {
 
       // Skills displayed in editor above
 
-      // Experience
-      if (sections.experience && sections.experience.length > 0) {
-        html += '<div class="rd-section"><div class="rd-section-title">Experience (' + sections.experience.length + ')</div>';
-        sections.experience.forEach(function(e) {
-          html += '<div class="rd-item">';
-          html += '<div class="rd-item-title">' + escHtml(e.title || '') + '</div>';
-          html += '<div class="rd-item-sub">' + escHtml(e.company || '') + ' | ' + (e.start_date || '') + ' - ' + (e.end_date || '') + '</div>';
-          if (e.description) html += '<div class="rd-item-desc">' + escHtml(e.description) + '</div>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
+      // Experience displayed in editor above
 
-      // Education
-      if (sections.education && sections.education.length > 0) {
-        html += '<div class="rd-section"><div class="rd-section-title">Education (' + sections.education.length + ')</div>';
-        sections.education.forEach(function(e) {
-          html += '<div class="rd-item">';
-          html += '<div class="rd-item-title">' + escHtml(e.degree || '') + '</div>';
-          html += '<div class="rd-item-sub">' + escHtml(e.school || '') + ' | ' + (e.start_date || '') + ' - ' + (e.end_date || '') + '</div>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
+      // Education displayed in editor above
 
       // Languages displayed in editor above
 
