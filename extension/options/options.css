@@ -229,3 +229,13 @@ textarea {
   background: #f9fafb;
   border-radius: 8px;
 }
+
+/* Model count hint */
+#model-count {
+  display: block;
+  margin-top: 2px;
+  min-height: 16px;
+}
+#model-count.success { color: #065f46; }
+#model-count.error { color: #991b1b; }
+#model-count.loading { color: #7c3aed; }

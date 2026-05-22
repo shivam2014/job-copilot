@@ -214,3 +214,60 @@ document.addEventListener('click', async (e) => {
     renderSavedAnswers(answers);
   }
 });
+
+// --- Fetch models on focus ---
+let modelsFetched = false;
+
+document.getElementById('llm_model').addEventListener('focus', async () => {
+  if (modelsFetched) return;
+  
+  const baseUrl = (document.getElementById('llm_base_url').value || '').replace(/\/+$/, '');
+  const apiKey = document.getElementById('llm_api_key').value || '';
+  
+  if (!baseUrl) return;
+
+  modelsFetched = true; // Only try once per session
+  const hint = document.getElementById('model-count');
+  hint.textContent = 'Loading models...';
+  hint.className = 'field-hint loading';
+
+  try {
+    const resp = await fetch(`${baseUrl}/models`, {
+      headers: apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {},
+    });
+    
+    if (!resp.ok) {
+      hint.textContent = `Could not load models (${resp.status})`;
+      hint.className = 'field-hint error';
+      modelsFetched = false; // Allow retry on next focus
+      return;
+    }
+
+    const data = await resp.json();
+    const models = data.data || [];
+    
+    if (models.length === 0) {
+      hint.textContent = 'No models returned — type a model name manually';
+      hint.className = 'field-hint';
+      return;
+    }
+
+    const list = document.getElementById('model-list');
+    list.innerHTML = models
+      .filter(m => m.id && !m.id.includes('.')) // Filter out non-model entries
+      .slice(0, 30) // Cap at 30
+      .map(m => `<option value="${m.id}">`)
+      .join('');
+
+    hint.textContent = `${Math.min(models.length, 30)} model(s) loaded — click to select or type custom`;
+    hint.className = 'field-hint success';
+  } catch (err) {
+    hint.textContent = `Could not reach endpoint: ${err.message}`;
+    hint.className = 'field-hint error';
+    modelsFetched = false;
+  }
+});
+
+// Reset fetch flag when URL or key changes
+document.getElementById('llm_base_url').addEventListener('change', () => { modelsFetched = false; });
+document.getElementById('llm_api_key').addEventListener('change', () => { modelsFetched = false; });

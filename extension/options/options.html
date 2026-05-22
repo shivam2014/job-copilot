@@ -17,8 +17,8 @@
         <h2>⚙️ AI Engine</h2>
       </div>
       <p class="section-desc">
-        Any OpenAI-compatible endpoint. Powers profile extraction from your resume (Step 2)
-        and generating answers on application forms.
+        Any OpenAI-compatible endpoint. After entering URL + key, click <strong>Fetch Models</strong>
+        to load available models. You can also type a model name manually.
       </p>
 
       <div class="field">
@@ -30,10 +30,12 @@
         <div class="field">
           <label>API Key</label>
           <input type="password" id="llm_api_key" placeholder="dummy">
+          <span class="field-hint" id="model-count"></span>
         </div>
         <div class="field">
           <label>Model</label>
-          <input type="text" id="llm_model" placeholder="deepseek-v4-flash-2">
+          <input type="text" id="llm_model" list="model-list" placeholder="deepseek-v4-flash-2">
+          <datalist id="model-list"></datalist>
         </div>
       </div>
     </section>
