@@ -139,23 +139,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     await runExtraction(text, null);
     btn.disabled = false; btn.textContent = '🔍 Extract Profile';
   };
-  // --- Save ---
-  document.getElementById('save-btn').onclick = async () => {
+  // --- Auto-save on any field change ---
+  let saveTimer = null;
+  async function autoSave() {
     const data = {};
     fields.forEach(f => { data[f] = document.getElementById(f).value.trim(); });
     const existing = await chrome.storage.sync.get('saved_answers');
     if (existing.saved_answers) data.saved_answers = existing.saved_answers;
-
     try {
       await chrome.storage.sync.set(data);
-      showMsg('✅ All settings saved!', 'success');
+      showMsg('✅ Saved', 'success');
     } catch (err) {
-      showMsg(`❌ Error: ${err.message}`, 'error');
+      showMsg(`❌ Save error: ${err.message}`, 'error');
     }
-  };
+  }
+
+  function debouncedSave() {
+    showMsg('Saving...', '');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(autoSave, 600);
+  }
+
+  // Listen to all field changes
+  fields.forEach(f => {
+    const el = document.getElementById(f);
+    if (el) el.addEventListener('input', debouncedSave);
+  });
+
+  // Remove the save button — replaced by auto-save
+  const saveBtn = document.getElementById('save-btn');
+  if (saveBtn) {
+    saveBtn.textContent = '✅ Auto-save active';
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.6';
+  }
 
   // Load token usage on page open
   setTimeout(renderTokenUsage, 500);
+  
+  // Do an initial save to persist any loaded values
+  setTimeout(autoSave, 1000);
 });
 
 // --- Saved Answers ---
