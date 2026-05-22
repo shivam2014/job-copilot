@@ -64,9 +64,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Check setup status
     const profile = await chrome.storage.sync.get([
-      'profile_name', 'llm_base_url', 'resume_text',
+      'profile_name', 'llm_base_url', 'resume_text', 'resume_full_data',
     ]);
-    if (!profile.resume_text) {
+    if (!profile.resume_text && !profile.resume_full_data) {
       msg.innerHTML = '⚠️ <a href="#" id="msg-settings">Upload your resume in Settings</a> first → extract your profile → then use AI questions';
     } else if (!profile.profile_name) {
       msg.innerHTML = '⚠️ Click "Extract Profile" in <a href="#" id="msg-settings">Settings</a> or type your name manually';
