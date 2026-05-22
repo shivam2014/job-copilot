@@ -630,6 +630,7 @@ function renderResumeData() {
     if (result.resume_full_data) {
       try {
         var data = JSON.parse(result.resume_full_data);
+        document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
         renderTagLists(data);
         renderEditableLists(data);
         renderResumeDataDisplay(data);
@@ -687,16 +688,8 @@ function renderResumeDataDisplay(data) {
         html += '</div>';
       }
 
-      // Languages
-      if (sections.languages && sections.languages.length > 0) {
-        html += '<div class="rd-section"><div class="rd-section-title">Languages</div>';
-        html += '<div class="rd-tags">';
-        sections.languages.forEach(function(l) {
-          var display = typeof l === 'object' ? (l.name || '') + (l.level ? ' — ' + l.level : '') : l;
-          html += '<span class="rd-tag">' + escHtml(display) + '</span>';
-        });
-        html += '</div></div>';
-      }
+      // Languages displayed in editor above
+
 
       // Projects
       if (sections.projects && sections.projects.length > 0) {
