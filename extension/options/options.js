@@ -83,78 +83,80 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // --- runExtraction (shared by PDF upload + button) ---
+  let extractAbort = null;
+
   async function runExtraction(resumeText, sourceLabel) {
     const baseUrl = (document.getElementById('llm_base_url').value || 'http://localhost:19530/v1').trim().replace(/\/+$/, '');
     const apiKey = document.getElementById('llm_api_key').value || 'dummy';
     const model = document.getElementById('llm_model').value.trim() || '';
     const statusEl = document.getElementById('extract-status');
+    const btn = document.getElementById('extract-btn');
+
     if (!baseUrl) { statusEl.textContent = 'Enter an API Base URL first'; statusEl.className = 'field-hint error'; return; }
-    if (!model) { statusEl.textContent = 'Select a model first (click the Model field to load available models)'; statusEl.className = 'field-hint error'; return; }
-    statusEl.textContent = 'Calling AI to parse your resume...';
+    if (!model) { statusEl.textContent = 'Select a model first (click the Model field)'; statusEl.className = 'field-hint error'; return; }
+
+    // Disable button during extraction
+    btn.disabled = true;
+    btn.textContent = sourceLabel ? '⏳ Extracting from PDF...' : '⏳ Extracting...';
+    statusEl.textContent = 'Calling AI to parse your resume...  [cancel]';
     statusEl.className = 'field-hint loading';
+    statusEl.style.cursor = 'pointer';
+    statusEl.onclick = function() { cancelExtraction(); };
+    extractAbort = new AbortController();
+
     try {
       const prompt = 'Extract JSON from resume. Keys: name, email, phone, linkedin, github, website, address, work_authorization. Use empty string for missing values. No null. JSON only.';
       const resp = await fetch(baseUrl + '/chat/completions', {
+        signal: extractAbort.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 4000) }], temperature: 0.01, max_tokens: 2000 }),
       });
-      if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(() => resp.statusText)));
+      if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(function() { return resp.statusText; })));
       const data = await resp.json();
       const msg = data.choices?.[0]?.message;
       if (!msg) throw new Error('Empty response from API');
       if (data.usage) { try { TokenTracker.record(model, data.usage); } catch(e) {} }
       let raw = (msg.content || msg.reasoning_content || '').trim();
       if (!raw) throw new Error('Empty response from API');
-      const jm = raw.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      const jm = raw.match(/\`\`\`(?:json)?\s*(\{[\s\S]*?\})\s*\`\`\`/);
       if (jm) raw = jm[1];
       const s = raw.indexOf('{'), e = raw.lastIndexOf('}') + 1;
       if (s === -1 || e <= s) throw new Error('Could not parse API response as JSON');
       const profile = JSON.parse(raw.slice(s, e));
-      const fields = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
+      const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
       let filled = 0;
-      for (const [id, key] of Object.entries(fields)) {
+      for (const [id, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
         if (profile[key] && profile[key].trim()) { el.value = profile[key].trim(); filled++; }
       }
       statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
       statusEl.className = 'field-hint success';
-      // Disable extract button after PDF auto-extraction
       if (sourceLabel) {
-        document.getElementById('extract-btn').disabled = true;
-        document.getElementById('extract-btn').textContent = '✅ Already extracted from PDF';
+        btn.disabled = true;
+        btn.textContent = '✅ Already extracted from PDF';
+      } else {
+        btn.disabled = false;
+        btn.textContent = '🔍 Extract Profile';
       }
     } catch (err) {
       if (err.name === 'AbortError') {
         statusEl.textContent = '❌ Cancelled';
-        statusEl.className = 'field-hint error';
       } else {
         statusEl.textContent = '❌ ' + err.message;
-        statusEl.className = 'field-hint error';
       }
-    }
-    // Re-enable button (unless it was a PDF extraction that succeeded)
-    if (!sourceLabel) {
+      statusEl.className = 'field-hint error';
       btn.disabled = false;
       btn.textContent = '🔍 Extract Profile';
     }
     statusEl.style.cursor = 'default';
     statusEl.onclick = null;
+    extractAbort = null;
   }
 
-  // --- Cancel extraction ---
   function cancelExtraction() {
     if (extractAbort) {
       extractAbort.abort();
-      extractAbort = null;
-      const statusEl = document.getElementById('extract-status');
-      statusEl.textContent = '❌ Cancelled';
-      statusEl.className = 'field-hint error';
-      statusEl.style.cursor = 'default';
-      statusEl.onclick = null;
-      const btn = document.getElementById('extract-btn');
-      btn.disabled = false;
-      btn.textContent = '🔍 Extract Profile';
     }
   }
 
@@ -162,10 +164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('extract-btn').onclick = async () => {
     const text = document.getElementById('resume_text').value.trim();
     if (!text) { setExtractStatus('Upload a PDF or paste resume text first', 'error'); return; }
-    const btn = document.getElementById('extract-btn');
-    btn.disabled = true; btn.textContent = '⏳ Extracting...';
     await runExtraction(text, null);
-    btn.disabled = false; btn.textContent = '🔍 Extract Profile';
   };
   // --- Auto-save on any field change ---
   let saveTimer = null;
