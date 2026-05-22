@@ -382,3 +382,8 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
 .config-alert.error .config-alert-body p {
   color: #991b1b;
 }
+.field-hint.error {
+  word-break: break-all;
+  max-height: 100px;
+  overflow-y: auto;
+}

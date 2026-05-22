@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (!resp.ok) {
         const err = await resp.text().catch(() => resp.statusText);
-        throw new Error(`API ${resp.status}: ${err.slice(0, 200)}`);
+        throw new Error(`API ${resp.status}: ${err}`);
       }
 
       const data = await resp.json();
@@ -246,7 +246,7 @@ async function testConnection() {
 
     if (!resp.ok) {
       const err = await resp.text().catch(() => '');
-      throw new Error(`${resp.status}${err ? ': ' + err.slice(0,100) : ''}`);
+      throw new Error(`${resp.status}${err ? ': ' + err : ''}`);
     }
 
     const data = await resp.json();
