@@ -1,6 +1,7 @@
 // Popup script
 
 document.addEventListener('DOMContentLoaded', async () => {
+  try {
   const statusText = document.getElementById('status-text');
   const statusCard = document.getElementById('status-card');
   const fieldsSection = document.getElementById('fields-section');
@@ -20,7 +21,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     msg.innerHTML = 'Go to <a href="#" id="msg-settings-link">Settings</a> to configure your profile and AI engine.';
     document.getElementById('msg-settings-link').onclick = function(e) {
       e.preventDefault();
-      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
+      try {
+        chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') }, function(tab) {
+          if (chrome.runtime.lastError) {
+            document.getElementById('status-text').textContent = 'Error: ' + chrome.runtime.lastError.message;
+          }
+        });
+      } catch(err) {
+        document.getElementById('status-text').textContent = 'Error: ' + err.message;
+      }
     };
     return;
   }
@@ -103,6 +112,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     e.preventDefault();
     chrome.tabs.reload(tab.id);
   };
+  } catch (e) {
+    console.error('JC Popup error:', e.message, e.stack);
+    document.getElementById('status-text').textContent = 'Error: ' + e.message;
+    document.getElementById('status-card').className = 'status-card error';
+  }
 });
 
 function setStatus(text, type) {
