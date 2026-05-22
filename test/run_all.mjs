@@ -11,6 +11,7 @@ const tests = [
   'integration.mjs',
   'form_detection.mjs',
   'extraction.mjs',
+  'comprehensive.mjs',
   'llm_prompts.mjs',
 ];
 
