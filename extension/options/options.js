@@ -45,6 +45,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     ta.style.display = 'block';
     ta.focus();
     e.target.style.display = 'none';
+    // Re-enable extract button when manually pasting text
+    document.getElementById('extract-btn').disabled = false;
+    document.getElementById('extract-btn').textContent = '🔍 Extract Profile';
   };
   uploadArea.ondragover = (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); };
   uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
@@ -116,6 +119,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
       statusEl.className = 'field-hint success';
+      // Disable extract button after PDF auto-extraction
+      if (sourceLabel) {
+        document.getElementById('extract-btn').disabled = true;
+        document.getElementById('extract-btn').textContent = '✅ Already extracted from PDF';
+      }
     } catch (err) {
       statusEl.textContent = '❌ ' + err.message;
       statusEl.className = 'field-hint error';
