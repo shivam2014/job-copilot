@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Copilot — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Job Copilot Settings</h1>
+    <p class="subtitle">Your profile is pre-filled from your resume via LLM. You review and edit. All data stays in your browser.</p>
+
+    <!-- Step 1: Upload Resume → Extract -->
+    <section class="section-primary">
+      <div class="section-header">
+        <h2>📄 Step 1: Upload Resume</h2>
+        <span class="badge badge-required">START HERE</span>
+      </div>
+      <p class="section-desc">
+        Paste your resume text below, then click <strong>"Extract Profile"</strong>. 
+        The AI reads your resume and fills the profile fields automatically. 
+        You can edit any field afterward.
+      </p>
+      
+      <div class="field">
+        <textarea id="resume_text" rows="8" placeholder="Paste your full resume text here..."></textarea>
+      </div>
+
+      <div class="inline-actions">
+        <button id="extract-btn" class="btn btn-accent">🔍 Extract Profile from Resume</button>
+        <span id="extract-status" class="field-hint"></span>
+      </div>
+    </section>
+
+    <!-- Step 2: Profile Fields (editable, pre-filled from extraction) -->
+    <section>
+      <div class="section-header">
+        <h2>📋 Step 2: Review & Edit Profile</h2>
+        <span class="badge badge-optional">SOURCE OF TRUTH FOR FORM FILL</span>
+      </div>
+      <p class="section-desc">
+        These values are used to <strong>autofill application forms</strong>. 
+        The AI pre-filled them from your resume above. Correct anything that looks wrong.
+        Only fields found on the application page get filled.
+      </p>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Full Name</label>
+          <input type="text" id="profile_name" placeholder="Extracted from resume...">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="profile_email" placeholder="Extracted from resume...">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Phone</label>
+          <input type="tel" id="profile_phone" placeholder="Extracted from resume...">
+        </div>
+        <div class="field">
+          <label>LinkedIn URL</label>
+          <input type="url" id="profile_linkedin" placeholder="Extracted from resume...">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>GitHub URL</label>
+          <input type="url" id="profile_github" placeholder="Extracted from resume...">
+        </div>
+        <div class="field">
+          <label>Website / Portfolio</label>
+          <input type="url" id="profile_website" placeholder="Extracted from resume...">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Address / Location</label>
+        <input type="text" id="profile_address" placeholder="Extracted from resume...">
+      </div>
+
+      <div class="field">
+        <label>Work Authorization</label>
+        <input type="text" id="profile_work_authorization" placeholder="Extracted from resume...">
+      </div>
+    </section>
+
+    <!-- Step 3: LLM Config -->
+    <section class="section-primary">
+      <div class="section-header">
+        <h2>⚙️ Step 3: AI Engine</h2>
+        <span class="badge badge-required">POWERS EXTRACTION + ANSWERS</span>
+      </div>
+      <p class="section-desc">
+        Any OpenAI-compatible endpoint. Used for <strong>extracting your profile</strong> from your resume,
+        and for <strong>generating answers</strong> to custom application questions that aren't in your profile
+        (e.g., "Why do you want to work here?").
+      </p>
+
+      <div class="field-row">
+        <div class="field wide">
+          <label>API Base URL</label>
+          <input type="url" id="llm_base_url" placeholder="http://localhost:19530/v1">
+          <span class="field-hint">Default: http://localhost:19530/v1 (Nyro). Change for OpenAI or other providers.</span>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>API Key</label>
+          <input type="password" id="llm_api_key" placeholder="dummy">
+          <span class="field-hint">Most local endpoints accept "dummy"</span>
+        </div>
+        <div class="field">
+          <label>Model Name</label>
+          <input type="text" id="llm_model" placeholder="deepseek-v4-flash-2">
+        </div>
+      </div>
+    </section>
+
+    <!-- Saved Q&A Bank (future) -->
+    <section>
+      <div class="section-header">
+        <h2>💾 Saved Answers</h2>
+        <span class="badge badge-optional">COMING SOON</span>
+      </div>
+      <p class="section-desc">
+        Answers you've generated for application questions can be saved here and reused 
+        when the same question appears in another application. 
+        <em>No saved answers yet. They'll appear here after you use the ✨ AI button on forms.</em>
+      </p>
+      <div id="saved-answers-list">
+        <p class="empty-state">Fill an AI question on a job page to see it saved here.</p>
+      </div>
+    </section>
+
+    <!-- Save -->
+    <div class="save-bar">
+      <button id="save-btn" class="btn btn-primary">💾 Save All Settings</button>
+      <span id="save-msg" class="save-msg"></span>
+    </div>
+  </div>
+
+  <script src="../lib/llm-client.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

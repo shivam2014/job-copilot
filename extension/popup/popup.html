@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <h1>Job Copilot</h1>
+      <span class="version">v0.1.0</span>
+    </div>
+
+    <div id="status-section">
+      <div class="status-card" id="status-card">
+        <span id="status-text">Checking page...</span>
+      </div>
+    </div>
+
+    <div class="section" id="fields-section" style="display:none">
+      <div class="section-title">Detected Fields</div>
+      <div class="stats-row">
+        <div class="stat">
+          <span class="stat-num" id="personal-count">0</span>
+          <span class="stat-label">Personal</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="ai-count">0</span>
+          <span class="stat-label">AI Questions</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="select-count">0</span>
+          <span class="stat-label">Dropdowns</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="file-count">0</span>
+          <span class="stat-label">Uploads</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions" id="actions-section" style="display:none">
+      <button class="btn btn-primary" id="fill-personal">📋 Fill Personal Fields</button>
+      <button class="btn btn-primary" id="fill-ai">🤖 Fill AI Questions</button>
+      <button class="btn btn-secondary" id="fill-all">⚡ Fill All</button>
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="footer">
+      <a href="#" id="open-settings">⚙️ Settings</a>
+      <a href="#" id="reload-page">🔄 Refresh detection</a>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
