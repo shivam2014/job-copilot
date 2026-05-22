@@ -31,6 +31,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('status-text').textContent = 'Error: ' + err.message;
       }
     };
+    document.getElementById('open-settings').onclick = function(e) {
+      e.preventDefault();
+      chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
+    };
     return;
   }
 
