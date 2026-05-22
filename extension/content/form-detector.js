@@ -14,7 +14,7 @@ const FormDetector = {
       'applicant.email', 'candidate.email',
     ],
     phone: [
-      'phone', 'telephone', 'tel', 'phonenumber', 'phone-number', 'phone_number',
+      'phone', 'telephone', 'tel', 'phonenumber', 'phone-number', 'phone_number', 'phone number',
       'mobile', 'cell',
       'applicant.phone', 'candidate.phone',
     ],
@@ -32,18 +32,18 @@ const FormDetector = {
     ],
     address: [
       'address', 'street', 'streetaddress', 'street_address',
-      'location', 'city', 'state', 'zip', 'postal', 'postalcode',
+      'location', 'city', 'state', 'zip', 'postal', 'postalcode', 'postal code',
     ],
     resume: [
       'resume', 'cv', 'upload-cv', 'uploadcv', 'upload_cv',
       'file', 'attachment', 'document',
     ],
     cover_letter: [
-      'coverletter', 'cover-letter', 'cover_letter',
+      'coverletter', 'cover-letter', 'cover_letter', 'cover letter',
       'coverlettertext', 'cover_letter_text',
     ],
     work_authorization: [
-      'workauth', 'work-authorization', 'work_authorization',
+      'workauth', 'work-authorization', 'work_authorization', 'work authorization',
       'visa', 'sponsorship', 'workpermit', 'work_permit',
       'authorized', 'legallyauthorized', 'legally_authorized',
     ],
