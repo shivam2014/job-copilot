@@ -1163,6 +1163,9 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
     dropdown.querySelectorAll('.md-item').forEach(el => {
       el.addEventListener('click', () => {
         document.getElementById('llm_model').value = el.dataset.model;
+        // Trigger change event for auto-save
+        var evt = new Event('input', { bubbles: true });
+        document.getElementById('llm_model').dispatchEvent(evt);
         dropdown.classList.remove('open');
         testConnection();
         // Auto-retry pending extraction after model selection
