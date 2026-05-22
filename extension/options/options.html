@@ -11,15 +11,49 @@
     <h1>Job Copilot Settings</h1>
     <p class="subtitle">Your profile is extracted from your resume via AI. You review and edit. All data stays in your browser.</p>
 
-    <!-- Step 1: Upload Resume -->
+    <!-- Step 1: LLM Config (needed first for extraction to work) -->
     <section class="section-primary">
       <div class="section-header">
-        <h2>📄 Step 1: Upload Your Resume</h2>
-        <span class="badge badge-required">START HERE</span>
+        <h2>⚙️ Step 1: Configure AI Engine</h2>
+        <span class="badge badge-required">DO THIS FIRST</span>
       </div>
       <p class="section-desc">
-        Upload your resume <strong>PDF</strong> or paste the text version. 
-        The AI reads it and fills your profile fields below. You can edit any field.
+        This powers <strong>extracting your profile</strong> from your resume (Step 2) 
+        and <strong>generating answers</strong> to application questions later.
+        Any OpenAI-compatible endpoint works.
+      </p>
+
+      <div class="field-row">
+        <div class="field wide">
+          <label>API Base URL</label>
+          <input type="url" id="llm_base_url" placeholder="http://localhost:19530/v1">
+          <span class="field-hint">Default: http://localhost:19530/v1 (Nyro). Change for OpenAI or other providers.</span>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>API Key</label>
+          <input type="password" id="llm_api_key" placeholder="dummy">
+          <span class="field-hint">Most local endpoints accept "dummy"</span>
+        </div>
+        <div class="field">
+          <label>Model Name</label>
+          <input type="text" id="llm_model" placeholder="deepseek-v4-flash-2">
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Upload Resume → Extract Profile -->
+    <section class="section-primary">
+      <div class="section-header">
+        <h2>📄 Step 2: Upload Resume & Extract Profile</h2>
+        <span class="badge badge-required">USES AI ENGINE ABOVE</span>
+      </div>
+      <p class="section-desc">
+        Upload your resume <strong>PDF</strong>. The AI engine (configured above) extracts your
+        name, email, phone, LinkedIn, GitHub and fills the profile fields below.
+        You can edit any field afterward.
       </p>
       
       <div class="upload-area" id="upload-area">
@@ -42,10 +76,10 @@
       </div>
     </section>
 
-    <!-- Step 2: Profile Fields -->
+    <!-- Step 3: Profile Fields (editable) -->
     <section>
       <div class="section-header">
-        <h2>📋 Step 2: Review & Edit Profile</h2>
+        <h2>📋 Step 3: Review & Edit Profile</h2>
         <span class="badge badge-optional">USED TO FILL FORMS</span>
       </div>
       <p class="section-desc">
@@ -97,37 +131,6 @@
       </div>
     </section>
 
-    <!-- Step 3: LLM Config -->
-    <section class="section-primary">
-      <div class="section-header">
-        <h2>⚙️ Step 3: AI Engine</h2>
-        <span class="badge badge-required">POWERS EXTRACTION + ANSWERS</span>
-      </div>
-      <p class="section-desc">
-        Any OpenAI-compatible endpoint. Used to <strong>extract your profile</strong> from your resume
-        and <strong>generate answers</strong> to custom application questions.
-      </p>
-
-      <div class="field-row">
-        <div class="field wide">
-          <label>API Base URL</label>
-          <input type="url" id="llm_base_url" placeholder="http://localhost:19530/v1">
-          <span class="field-hint">Default: http://localhost:19530/v1 (Nyro). Change for OpenAI or other providers.</span>
-        </div>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>API Key</label>
-          <input type="password" id="llm_api_key" placeholder="dummy">
-        </div>
-        <div class="field">
-          <label>Model Name</label>
-          <input type="text" id="llm_model" placeholder="deepseek-v4-flash-2">
-        </div>
-      </div>
-    </section>
-
     <!-- Saved Answers -->
     <section>
       <div class="section-header">
@@ -147,7 +150,7 @@
     </div>
   </div>
 
-  <script src="../lib/pdf-extract.js"></script>
+  <script type="module" src="../lib/pdf-extract.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

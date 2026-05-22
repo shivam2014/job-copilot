@@ -1,26 +1,25 @@
-// PDF Text Extraction — wraps pdf.js for use in the options page
-// Exposes: extractTextFromPDF(arrayBuffer) → Promise<string>
+// PDF Text Extraction — used by options page
+// pdf.js imported dynamically from local path
 
-async function extractTextFromPDF(arrayBuffer) {
-  // Set worker path
-  const workerSrc = chrome.runtime.getURL('lib/pdfjs/pdf.worker.min.mjs');
-  
-  // We need to dynamically import pdf.js
-  // Since it's an ES module, we use import()
-  const moduleUrl = chrome.runtime.getURL('lib/pdfjs/pdf.min.mjs');
-  
-  const pdfjsLib = await import(moduleUrl);
-  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-  
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+let pdfjsLib = null;
+const WORKER_URL = chrome.runtime.getURL('lib/pdfjs/pdf.worker.min.mjs');
+const PDFJS_URL = chrome.runtime.getURL('lib/pdfjs/pdf.min.mjs');
+
+export async function extractTextFromPDF(arrayBuffer) {
+  if (!pdfjsLib) {
+    pdfjsLib = await import(PDFJS_URL);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
+  }
+
+  const data = new Uint8Array(arrayBuffer);
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
   let fullText = '';
-  
+
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items.map(item => item.str).join(' ');
-    fullText += pageText + '\n\n';
+    const tc = await page.getTextContent();
+    fullText += tc.items.map(item => item.str).join(' ') + '\n\n';
   }
-  
+
   return fullText.trim();
 }
