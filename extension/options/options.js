@@ -277,6 +277,7 @@ async function testConnection() {
 // --- Config Status ---
 function updateConfigStatus() {
   const badge = document.getElementById('config-status');
+  const warning = document.getElementById('config-warning');
   if (!badge) return;
   
   const baseUrl = (document.getElementById('llm_base_url').value || '').trim();
@@ -285,21 +286,38 @@ function updateConfigStatus() {
   
   // Check saved test status
   chrome.storage.sync.get('config_tested', (result) => {
+    const needsAttention = !result.config_tested || result.config_tested === 'error';
+    
     if (result.config_tested === 'ok') {
       badge.className = 'config-badge connected';
       badge.textContent = '✅ Connected';
+      if (warning) warning.style.display = 'none';
+      const alert = document.getElementById('config-alert');
+      if (alert) { alert.style.display = 'none'; }
     } else if (result.config_tested === 'error') {
       badge.className = 'config-badge error';
       badge.textContent = '❌ Connection failed';
+      const alert = document.getElementById('config-alert');
+      if (alert) { alert.className = 'config-alert error'; alert.style.display = 'flex'; document.getElementById('config-alert-text').innerHTML = 'Connection failed. Check your API URL, key, and model below. <a href="#" id="alert-test-link" style="color:#991b1b">Test again</a>'; document.getElementById('alert-test-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
+      if (warning) { warning.style.display = 'block'; warning.innerHTML = '<strong>❌ Connection failed</strong> — check your API URL, key, and model. <a href="#" id="test-now-link" style="color:#991b1b;font-weight:600">Test again</a>'; document.getElementById('test-now-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
     } else if (baseUrl && (baseUrl.includes('localhost') || baseUrl.includes('dummy'))) {
       badge.className = 'config-badge untested';
       badge.textContent = '⚠️ Default — configure or test';
+      const alert = document.getElementById('config-alert');
+      if (alert) { alert.className = 'config-alert'; alert.style.display = 'flex'; document.getElementById('config-alert-text').innerHTML = 'The defaults shown are for a local <strong>Nyro</strong> endpoint. <a href="#" id="alert-test-link" style="color:#92400e">Test connection</a> or enter your own API URL, key, and model.'; document.getElementById('alert-test-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
+      if (warning) { warning.style.display = 'block'; warning.innerHTML = '<strong>🔧 Configure your AI Engine</strong> — the defaults shown are for a local <strong>Nyro</strong> endpoint. <a href="#" id="test-now-link" style="color:#92400e;font-weight:600">Test connection</a> or enter your own API URL, key, and model.'; document.getElementById('test-now-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
     } else if (baseUrl) {
       badge.className = 'config-badge untested';
-      badge.textContent = '⚠️ Untested — test connection';
+      badge.textContent = '⚠️ Untested';
+      const alert = document.getElementById('config-alert');
+      if (alert) { alert.className = 'config-alert'; alert.style.display = 'flex'; document.getElementById('config-alert-text').innerHTML = 'Click <a href="#" id="alert-test-link" style="color:#92400e">Test Connection</a> to verify your endpoint works.'; document.getElementById('alert-test-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
+      if (warning) { warning.style.display = 'block'; warning.innerHTML = '<strong>🔧 Test your AI Engine</strong> — click <a href="#" id="test-now-link" style="color:#92400e;font-weight:600">Test Connection</a> to verify your endpoint works.'; document.getElementById('test-now-link')?.addEventListener('click', (e) => { e.preventDefault(); testConnection(); }); }
     } else {
       badge.className = 'config-badge untested';
       badge.textContent = '⚠️ Not configured';
+      const alert = document.getElementById('config-alert');
+      if (alert) { alert.className = 'config-alert'; alert.style.display = 'flex'; document.getElementById('config-alert-text').innerHTML = 'Enter an API Base URL, Key, and Model in the <strong>AI Engine</strong> section below.'; }
+      if (warning) { warning.style.display = 'block'; warning.innerHTML = '<strong>🔧 Configure your AI Engine</strong> — enter an API Base URL, Key, and Model above.'; }
     }
   });
 }
