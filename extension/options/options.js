@@ -205,7 +205,7 @@ function showMsg(text, type) {
 
 // --- Test connection (checks if model + endpoint work) ---
 async function testConnection() {
-  const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, ''));
+  const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, '');
   const apiKey = document.getElementById('llm_api_key').value || '';
   const model = document.getElementById('llm_model').value.trim();
   
@@ -278,7 +278,7 @@ let modelsFetched = false;
 document.getElementById('llm_model').addEventListener('focus', async () => {
   if (modelsFetched) return;
   
-  const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, ''));
+  const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, '');
   const apiKey = document.getElementById('llm_api_key').value || '';
   
   if (!baseUrl) return;
