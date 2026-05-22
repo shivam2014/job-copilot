@@ -51,10 +51,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const text = await extractTextFromPDF(arrayBuffer);
-      document.getElementById('resume_text').value = text;
-      showUploadStatus(`✅ ${file.name} — ${text.length} chars extracted`, 'success');
-      // Auto-trigger profile extraction
-      document.getElementById('extract-btn').click();
+      showUploadStatus(`✅ ${file.name} — ${text.length} chars`, 'success');
+      // Auto-extract profile directly (skip textarea)
+      await runExtraction(text, file.name);
     } catch (err) {
       showUploadStatus(`❌ ${err.message}`, 'error');
     }
@@ -91,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setExtractStatus('Calling AI to parse your resume...', 'loading');
 
     try {
-      const prompt = `You are parsing a resume. Extract these fields as a JSON object (keys: name, email, phone, linkedin, github, website, address, work_authorization). Return ONLY the JSON. No other text.`;
+      const prompt = `Extract JSON from resume. Keys: name, email, phone, linkedin, github, website, address, work_authorization. Use empty string for missing values. No null. JSON only.`;
 
       const resp = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -106,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             { role: 'user', content: `Resume:\n\n${resumeText.slice(0, 4000)}` },
           ],
           temperature: 0.01,
-          max_tokens: 500,
+          max_tokens: 2000,
         }),
       });
 
