@@ -928,26 +928,9 @@ function renderResumeDataDisplay(data) {
       // Languages displayed in editor above
 
 
-      // Projects
-      if (sections.projects && sections.projects.length > 0) {
-        html += '<div class="rd-section"><div class="rd-section-title">Projects (' + sections.projects.length + ')</div>';
-        sections.projects.forEach(function(p) {
-          html += '<div class="rd-item">';
-          html += '<div class="rd-item-title">' + escHtml(p.name || '') + '</div>';
-          if (p.description) html += '<div class="rd-item-desc">' + escHtml(p.description) + '</div>';
-          html += '</div>';
-        });
-        html += '</div>';
-      }
+      // Projects displayed in editor above
 
-      // Publications
-      if (sections.publications && sections.publications.length > 0) {
-        html += '<div class="rd-section"><div class="rd-section-title">Publications (' + sections.publications.length + ')</div>';
-        sections.publications.forEach(function(p) {
-          html += '<div class="rd-item">' + escHtml(typeof p === 'string' ? p : (p.title || p.name || JSON.stringify(p))) + '</div>';
-        });
-        html += '</div>';
-      }
+      // Publications displayed in editor above
 
       if (!html) html = '<p class="empty-state">Data extracted but no structured sections found. Re-extract from PDF.</p>';
       el.innerHTML = html;
