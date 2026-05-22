@@ -314,5 +314,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+
+// Re-detect forms when DOM changes (SPA support)
+let detectTimeout = null;
+const observer = new MutationObserver(function() {
+  clearTimeout(detectTimeout);
+  detectTimeout = setTimeout(function() {
+    // Only re-detect if the JC panel isn't open (avoid interference)
+    const panel = document.getElementById('jc-panel');
+    if (!panel || !panel.classList.contains('open')) {
+      const fields = FormDetector.detect();
+      const total = fields.personal.length + fields.questions.length;
+      if (total > 0 && !document.getElementById('jc-float-btn')) {
+        // Forms appeared but JC button isn't there - re-inject
+        injectFloatingButton();
+        injectAIAssistButtons();
+      }
+    }
+  }, 2000);
+});
+observer.observe(document.body, { childList: true, subtree: true });
+
 // Start
 init();
