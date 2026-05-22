@@ -6,13 +6,40 @@ let jcPanel = null;
 // Main init
 async function init() {
   // Wait for page to settle (dynamic SPAs)
-  setTimeout(() => {
+  // Re-detect after Apply button click (SPA transition)
+  document.addEventListener('click', function(e) {
+    var t = e.target;
+    if (t.tagName === 'BUTTON' || t.tagName === 'A') {
+      var txt = (t.textContent || '').toLowerCase();
+      if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
+        setTimeout(function() {
+          var fields = FormDetector.detect();
+          var total = fields.personal.length + fields.questions.length;
+          if (total > 0) {
+            injectAIAssistButtons();
+            chrome.runtime.sendMessage({ type: 'jc_fields_detected', count: total }).catch(function() {});
+          }
+        }, 3000);
+      }
+    }
+  });
+  
+  setTimeout(function() {
     detectedFields = FormDetector.detect();
     const totalFields = detectedFields.personal.length + 
                         detectedFields.questions.length + 
                         detectedFields.selects.length;
 
     if (totalFields === 0) return; // No form detected
+    
+    // Auto-click "Apply Now" or similar buttons to start the application
+    setTimeout(function() {
+      var applyBtn = document.querySelector('button:has-text("Apply Now"), button:has-text("Apply"), a:has-text("Apply Now"), a:has-text("Apply")');
+      if (applyBtn && applyBtn.offsetHeight > 0) {
+        console.log('JC: Clicking Apply Now...');
+        applyBtn.click();
+      }
+    }, 2000);
 
     injectFloatingButton();
     injectAIAssistButtons();
@@ -233,7 +260,25 @@ function extractJobDescription() {
 
 function injectAIAssistButtons() {
   // Wait a bit for dynamic forms
-  setTimeout(() => {
+  // Re-detect after Apply button click (SPA transition)
+  document.addEventListener('click', function(e) {
+    var t = e.target;
+    if (t.tagName === 'BUTTON' || t.tagName === 'A') {
+      var txt = (t.textContent || '').toLowerCase();
+      if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
+        setTimeout(function() {
+          var fields = FormDetector.detect();
+          var total = fields.personal.length + fields.questions.length;
+          if (total > 0) {
+            injectAIAssistButtons();
+            chrome.runtime.sendMessage({ type: 'jc_fields_detected', count: total }).catch(function() {});
+          }
+        }, 3000);
+      }
+    }
+  });
+  
+  setTimeout(function() {
     const fields = FormDetector.detect();
     for (const field of fields.questions) {
       // Check if already wrapped
@@ -275,7 +320,25 @@ function showStatus(msg, type) {
   if (!el) return;
   el.className = `jc-status ${type}`;
   el.textContent = msg;
-  setTimeout(() => { el.textContent = ''; el.className = 'jc-status'; }, 5000);
+  // Re-detect after Apply button click (SPA transition)
+  document.addEventListener('click', function(e) {
+    var t = e.target;
+    if (t.tagName === 'BUTTON' || t.tagName === 'A') {
+      var txt = (t.textContent || '').toLowerCase();
+      if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
+        setTimeout(function() {
+          var fields = FormDetector.detect();
+          var total = fields.personal.length + fields.questions.length;
+          if (total > 0) {
+            injectAIAssistButtons();
+            chrome.runtime.sendMessage({ type: 'jc_fields_detected', count: total }).catch(function() {});
+          }
+        }, 3000);
+      }
+    }
+  });
+  
+  setTimeout(function() { el.textContent = ''; el.className = 'jc-status'; }, 5000);
 }
 
 // --- Saved Answers Bank ---
