@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         signal: extractAbort.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 4000) }], temperature: 0.01, max_tokens: 4000 }),
+        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 4000) }], temperature: 0.01, max_tokens: 8000 }),
       });
       if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(function() { return resp.statusText; })));
       const data = await resp.json();
@@ -150,7 +150,7 @@ var jsonStr = raw.slice(start, end + 1);
         // Try wrapping unquoted strings in single quotes (rare LLM output)
         jsonStr = jsonStr.replace(/:\s*'([^']*?)'([,}])/g, ':"$1"$2');
         try { profile = JSON.parse(jsonStr); } catch(e2) {
-          throw new Error('Could not parse API response as JSON: ' + jsonStr.substring(0, 100));
+          throw new Error('JSON response was truncated (max_tokens too low). Try again or use a shorter resume. Response: ' + jsonStr.substring(0, 150) + '...');
         }
       }
       const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
