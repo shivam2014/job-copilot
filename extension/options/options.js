@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Read LLM config directly from the form fields (user visible, always current)
-    const baseUrl = (document.getElementById('llm_base_url').value || 'http://localhost:19530/v1').replace(/\/+$/, '');
+    const baseUrl = (document.getElementById('llm_base_url').value || 'http://localhost:19530/v1').trim().replace(/\/+$/, '');
     const apiKey = document.getElementById('llm_api_key').value || 'dummy';
     const model = document.getElementById('llm_model').value || 'deepseek-v4-flash-2';
 
@@ -221,7 +221,7 @@ let modelsFetched = false;
 document.getElementById('llm_model').addEventListener('focus', async () => {
   if (modelsFetched) return;
   
-  const baseUrl = (document.getElementById('llm_base_url').value || '').replace(/\/+$/, '');
+  const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, '');
   const apiKey = document.getElementById('llm_api_key').value || '';
   
   if (!baseUrl) return;
@@ -237,7 +237,7 @@ document.getElementById('llm_model').addEventListener('focus', async () => {
     });
     
     if (!resp.ok) {
-      hint.textContent = `Could not load models (${resp.status})`;
+      hint.textContent = `Could not load models — ${baseUrl}/models returned ${resp.status}`;
       hint.className = 'field-hint error';
       modelsFetched = false; // Allow retry on next focus
       return;
