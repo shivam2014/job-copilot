@@ -449,6 +449,7 @@ function saveResumeDataDebounced() {
 document.getElementById('rd-exp-show-form').onclick = function() {
   document.getElementById('rd-exp-form').style.display = 'block';
   this.style.display = 'none';
+  document.getElementById('rd-exp-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 document.getElementById('rd-exp-cancel').onclick = function() {
   document.getElementById('rd-exp-form').style.display = 'none';
@@ -495,6 +496,7 @@ document.getElementById('rd-exp-save').onclick = function() {
 document.getElementById('rd-edu-show-form').onclick = function() {
   document.getElementById('rd-edu-form').style.display = 'block';
   this.style.display = 'none';
+  document.getElementById('rd-edu-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 document.getElementById('rd-edu-cancel').onclick = function() {
   document.getElementById('rd-edu-form').style.display = 'none';
@@ -504,6 +506,7 @@ document.getElementById('rd-edu-cancel').onclick = function() {
 // --- Projects ---
 document.getElementById('rd-proj-show-form').onclick = function() {
   document.getElementById('rd-proj-form').style.display = 'block'; this.style.display = 'none';
+  document.getElementById('rd-proj-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 document.getElementById('rd-proj-cancel').onclick = function() {
   document.getElementById('rd-proj-form').style.display = 'none'; document.getElementById('rd-proj-show-form').style.display = 'block';
@@ -532,6 +535,7 @@ document.getElementById('rd-proj-save').onclick = function() {
 // --- Publications ---
 document.getElementById('rd-pub-show-form').onclick = function() {
   document.getElementById('rd-pub-form').style.display = 'block'; this.style.display = 'none';
+  document.getElementById('rd-pub-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
 document.getElementById('rd-pub-cancel').onclick = function() {
   document.getElementById('rd-pub-form').style.display = 'none'; document.getElementById('rd-pub-show-form').style.display = 'block';
@@ -617,6 +621,7 @@ document.addEventListener('click', function(e) {
       document.getElementById('rd-exp-show-form').style.display = 'none';
       document.getElementById('rd-exp-form').dataset.editIndex = idx;
       document.getElementById('rd-exp-save').textContent = 'Update';
+      document.getElementById('rd-exp-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else if (list === 'projects') {
       document.getElementById('rd-proj-name').value = item.name || '';
       document.getElementById('rd-proj-desc').value = item.description || '';
@@ -624,6 +629,7 @@ document.addEventListener('click', function(e) {
       document.getElementById('rd-proj-show-form').style.display = 'none';
       document.getElementById('rd-proj-form').dataset.editIndex = idx;
       document.getElementById('rd-proj-save').textContent = 'Update';
+      document.getElementById('rd-proj-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     } else if (list === 'publications') {
       document.getElementById('rd-pub-title').value = item.title || (typeof item === 'string' ? item : '');
@@ -632,6 +638,7 @@ document.addEventListener('click', function(e) {
       document.getElementById('rd-pub-show-form').style.display = 'none';
       document.getElementById('rd-pub-form').dataset.editIndex = idx;
       document.getElementById('rd-pub-save').textContent = 'Update';
+      document.getElementById('rd-pub-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     } else if (list === 'education') {
       document.getElementById('rd-edu-degree').value = item.degree || '';
@@ -647,6 +654,7 @@ document.addEventListener('click', function(e) {
       document.getElementById('rd-edu-show-form').style.display = 'none';
       document.getElementById('rd-edu-form').dataset.editIndex = idx;
       document.getElementById('rd-edu-save').textContent = 'Update';
+      document.getElementById('rd-edu-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     return;
   }
