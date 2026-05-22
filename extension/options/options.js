@@ -595,8 +595,8 @@ function renderEditableLists(data) {
   if (expList) {
     expList.innerHTML = (sections.experience || []).map(function(item, i) {
       var html = '<div class="rd-card">';
-      html += '<button class="rd-card-edit" data-list="experience" data-index="' + i + '">Edit</button>';
-      html += '<button class="rd-card-del" data-list="experience" data-index="' + i + '">✕</button>';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';  // flex wrapper
+      html += '<div style="flex:1">';  // content left
       if (item.title) html += '<div class="rd-card-title">' + escHtml(item.title) + '</div>';
       if (item.company) html += '<div class="rd-card-sub">' + escHtml(item.company) + '</div>';
       if (item.start_date || item.end_date) {
@@ -608,6 +608,11 @@ function renderEditableLists(data) {
             html += '<div class="rd-card-sub">' + escHtml(sd) + ' - ' + escHtml(ed) + '</div>';
           }
       if (item.description) html += '<div class="rd-card-desc">' + escHtml(item.description) + '</div>';
+      html += '</div>';  // end content left
+      html += '<div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';  // buttons right
+      html += '<button class="rd-card-edit" data-list="experience" data-index="' + i + '">Edit</button>';
+      html += '<button class="rd-card-del" data-list="experience" data-index="' + i + '">✕</button>';
+      html += '</div></div>';  // end buttons + end flex
       html += '</div>';
       return html;
     }).join('');
@@ -618,8 +623,8 @@ function renderEditableLists(data) {
   if (eduList) {
     eduList.innerHTML = (sections.education || []).map(function(item, i) {
       var html = '<div class="rd-card">';
-      html += '<button class="rd-card-edit" data-list="education" data-index="' + i + '">Edit</button>';
-      html += '<button class="rd-card-del" data-list="education" data-index="' + i + '">✕</button>';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';  // flex wrapper
+      html += '<div style="flex:1">';  // content left
       if (item.degree) html += '<div class="rd-card-title">' + escHtml(item.degree) + '</div>';
       if (item.school) html += '<div class="rd-card-sub">' + escHtml(item.school) + '</div>';
       if (item.start_date || item.end_date) {
@@ -630,6 +635,11 @@ function renderEditableLists(data) {
             if (ed.length === 7 && ed.indexOf('/') === 2) { var p = ed.split('/'); ed = months[parseInt(p[0])] + ' ' + p[1]; }
             html += '<div class="rd-card-sub">' + escHtml(sd) + ' - ' + escHtml(ed) + '</div>';
           }
+      html += '</div>';  // end content left
+      html += '<div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';  // buttons right
+      html += '<button class="rd-card-edit" data-list="education" data-index="' + i + '">Edit</button>';
+      html += '<button class="rd-card-del" data-list="education" data-index="' + i + '">✕</button>';
+      html += '</div></div>';  // end buttons + end flex
       html += '</div>';
       return html;
     }).join('');
