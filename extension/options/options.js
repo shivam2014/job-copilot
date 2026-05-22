@@ -211,6 +211,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load token usage on page open
   setTimeout(renderTokenUsage, 500);
   setTimeout(renderResumeData, 600);
+  setTimeout(function() {
+    chrome.storage.sync.get('resume_full_data', function(r) {
+      if (r.resume_full_data) {
+        try { renderTagLists(JSON.parse(r.resume_full_data)); } catch(e) {}
+      }
+    });
+  }, 700);
   
   // Do an initial save to persist any loaded values
   setTimeout(autoSave, 1000);
@@ -470,7 +477,12 @@ document.getElementById('rd-edu-save').onclick = function() {
 
 // Delete from a list (delegated)
 document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('rd-card-del') || e.target.classList.contains('rd-list-item-del')) {
+  if (e.target.classList.contains('rd-card-del') || e.target.classList.contains('rd-list-item-del') || e.target.classList.contains('rd-tag-del')) {
+    var section = e.target.dataset.section;
+    if (section !== undefined) {
+      deleteTag(section, parseInt(e.target.dataset.index));
+      return;
+    }
     var key = e.target.dataset.list;
     var idx = parseInt(e.target.dataset.index);
     var data = getResumeData();
@@ -490,6 +502,25 @@ document.getElementById('toggle-json-editor').onclick = function() {
   area.style.display = area.style.display === 'none' ? 'block' : 'none';
   this.textContent = area.style.display === 'none' ? 'Edit Raw JSON' : 'Hide Raw JSON';
 };
+
+// Render tag-based lists for skills and languages
+function renderTagLists(data) {
+  var sections = data.rawSections || {};
+  
+  var skillsContainer = document.getElementById('rd-skills-tags');
+  if (skillsContainer) {
+    skillsContainer.innerHTML = (sections.skills || []).map(function(s, i) {
+      return '<span class="rd-tag-with-del">' + escHtml(s) + '<button class="rd-tag-del" data-section="skills" data-index="' + i + '">✕</button></span>';
+    }).join('');
+  }
+  
+  var langsContainer = document.getElementById('rd-languages-tags');
+  if (langsContainer) {
+    langsContainer.innerHTML = (sections.languages || []).map(function(l, i) {
+      return '<span class="rd-tag-with-del">' + escHtml(l) + '<button class="rd-tag-del" data-section="languages" data-index="' + i + '">✕</button></span>';
+    }).join('');
+  }
+}
 
 // Populate editable lists from data
 function renderEditableLists(data) {

@@ -129,16 +129,20 @@
 
 
 
-      <!-- Skills & Languages -->
-      <div class="rd-editor-row">
-        <div class="rd-editor-field">
-          <label>Skills (comma separated)</label>
-          <input type="text" id="rd_skills" placeholder="Python, MATLAB, Flight Performance...">
-        </div>
-        <div class="rd-editor-field">
-          <label>Languages (comma separated)</label>
-          <input type="text" id="rd_languages" placeholder="English, Hindi, French...">
-        </div>
+      <!-- Skills (tag-based) -->
+      <div class="rd-section-label">Skills</div>
+      <div id="rd-skills-tags" class="rd-tags" style="margin-bottom:6px"></div>
+      <div class="rd-tag-add-row">
+        <input type="text" id="rd-skill-input" placeholder="Add a skill..." style="flex:1">
+        <button id="rd-skill-add" class="btn btn-sm btn-accent" style="padding:4px 10px;font-size:11px">+ Add</button>
+      </div>
+
+      <!-- Languages (tag-based) -->
+      <div class="rd-section-label" style="margin-top:12px">Languages</div>
+      <div id="rd-languages-tags" class="rd-tags" style="margin-bottom:6px"></div>
+      <div class="rd-tag-add-row">
+        <input type="text" id="rd-lang-input" placeholder="Add a language..." style="flex:1">
+        <button id="rd-lang-add" class="btn btn-sm btn-accent" style="padding:4px 10px;font-size:11px">+ Add</button>
       </div>
 
       <!-- Experience cards -->
