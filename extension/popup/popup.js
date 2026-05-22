@@ -7,9 +7,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const actionsSection = document.getElementById('actions-section');
   const msg = document.getElementById('msg');
 
+  // Check if we're on a web page where the content script can run
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.url?.startsWith('http')) {
-    setStatus('Open a job application page to use Copilot', 'idle');
+  const url = tab?.url || '';
+  
+  if (!url.startsWith('http')) {
+    // Not on a web page - show settings link
+    document.getElementById('fields-section').style.display = 'none';
+    document.getElementById('actions-section').style.display = 'none';
+    document.getElementById('status-text').textContent = 'Open a job application page to use Copilot';
+    document.getElementById('status-card').className = 'status-card idle';
+    msg.innerHTML = 'Go to <a href="#" id="open-settings">Settings</a> to configure your profile and AI engine.';
     return;
   }
 

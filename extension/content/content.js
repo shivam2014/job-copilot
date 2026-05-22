@@ -34,7 +34,15 @@ async function init() {
     
     // Auto-click "Apply Now" or similar buttons to start the application
     setTimeout(function() {
-      var applyBtn = document.querySelector('button:has-text("Apply Now"), button:has-text("Apply"), a:has-text("Apply Now"), a:has-text("Apply")');
+      var allBtns = document.querySelectorAll('button, a');
+      var applyBtn = null;
+      for (var b = 0; b < allBtns.length; b++) {
+        var txt = (allBtns[b].textContent || '').toLowerCase().trim();
+        if (txt === 'apply now' || txt === 'apply' || txt.indexOf('apply now') >= 0) {
+          applyBtn = allBtns[b];
+          break;
+        }
+      }
       if (applyBtn && applyBtn.offsetHeight > 0) {
         console.log('JC: Clicking Apply Now...');
         applyBtn.click();
