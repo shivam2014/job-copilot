@@ -79,104 +79,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     uploadStatus.textContent = msg;
   }
 
-  // --- Extract Profile (calls LLM directly from form fields) ---
-  document.getElementById('extract-btn').onclick = async () => {
-    const resumeText = document.getElementById('resume_text').value.trim();
-    if (!resumeText) {
-      setExtractStatus('Upload a PDF or paste resume text first', 'error');
-      return;
-    }
-
-    // Read LLM config directly from the form fields (user visible, always current)
+  // --- runExtraction (shared by PDF upload + button) ---
+  async function runExtraction(resumeText, sourceLabel) {
     const baseUrl = (document.getElementById('llm_base_url').value || 'http://localhost:19530/v1').trim().replace(/\/+$/, '');
     const apiKey = document.getElementById('llm_api_key').value || 'dummy';
     const model = document.getElementById('llm_model').value.trim() || '';
-
-    if (!baseUrl || baseUrl === '') {
-      setExtractStatus('Enter your LLM API Base URL in Step 1 first', 'error');
-      return;
-    }
-
-    const btn = document.getElementById('extract-btn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Extracting...';
-    setExtractStatus('Calling AI to parse your resume...', 'loading');
-
+    const statusEl = document.getElementById('extract-status');
+    if (!baseUrl) { statusEl.textContent = 'Enter an API Base URL first'; statusEl.className = 'field-hint error'; return; }
+    if (!model) { statusEl.textContent = 'Select a model first (click the Model field to load available models)'; statusEl.className = 'field-hint error'; return; }
+    statusEl.textContent = 'Calling AI to parse your resume...';
+    statusEl.className = 'field-hint loading';
     try {
-      const prompt = `Extract JSON from resume. Keys: name, email, phone, linkedin, github, website, address, work_authorization. Use empty string for missing values. No null. JSON only.`;
-
-      const resp = await fetch(`${baseUrl}/chat/completions`, {
+      const prompt = 'Extract JSON from resume. Keys: name, email, phone, linkedin, github, website, address, work_authorization. Use empty string for missing values. No null. JSON only.';
+      const resp = await fetch(baseUrl + '/chat/completions', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: prompt },
-            { role: 'user', content: `Resume:\n\n${resumeText.slice(0, 4000)}` },
-          ],
-          temperature: 0.01,
-          max_tokens: 2000,
-        }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 4000) }], temperature: 0.01, max_tokens: 2000 }),
       });
-
-      if (!resp.ok) {
-        const err = await resp.text().catch(() => resp.statusText);
-        throw new Error(`API ${resp.status}: ${err}`);
-      }
-
+      if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(() => resp.statusText)));
       const data = await resp.json();
       const msg = data.choices?.[0]?.message;
       if (!msg) throw new Error('Empty response from API');
-      
-      // Track token usage
-      if (data.usage) {
-        try { TokenTracker.record(model, data.usage); } catch(e) {}
-      }
-
+      if (data.usage) { try { TokenTracker.record(model, data.usage); } catch(e) {} }
       let raw = (msg.content || msg.reasoning_content || '').trim();
       if (!raw) throw new Error('Empty response from API');
-
-      // Parse JSON
-      const jsonMatch = raw.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-      if (jsonMatch) raw = jsonMatch[1];
-      const start = raw.indexOf('{');
-      const end = raw.lastIndexOf('}') + 1;
-      if (start === -1 || end <= start) throw new Error('Could not parse API response as JSON');
-      const profile = JSON.parse(raw.slice(start, end));
-
-      // Populate fields
-      const fieldMap = {
-        profile_name: 'name',
-        profile_email: 'email',
-        profile_phone: 'phone',
-        profile_linkedin: 'linkedin',
-        profile_github: 'github',
-        profile_website: 'website',
-        profile_address: 'address',
-        profile_work_authorization: 'work_authorization',
-      };
-
+      const jm = raw.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      if (jm) raw = jm[1];
+      const s = raw.indexOf('{'), e = raw.lastIndexOf('}') + 1;
+      if (s === -1 || e <= s) throw new Error('Could not parse API response as JSON');
+      const profile = JSON.parse(raw.slice(s, e));
+      const fields = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
       let filled = 0;
-      for (const [fieldId, key] of Object.entries(fieldMap)) {
-        const el = document.getElementById(fieldId);
-        if (profile[key] && profile[key].trim()) {
-          el.value = profile[key].trim();
-          filled++;
-        }
+      for (const [id, key] of Object.entries(fields)) {
+        const el = document.getElementById(id);
+        if (profile[key] && profile[key].trim()) { el.value = profile[key].trim(); filled++; }
       }
-
-      setExtractStatus(`✅ Extracted ${filled} field(s). Review and edit below.`, 'success');
+      statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
+      statusEl.className = 'field-hint success';
     } catch (err) {
-      setExtractStatus(`❌ ${err.message}`, 'error');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '🔍 Extract Profile from Resume';
+      statusEl.textContent = '❌ ' + err.message;
+      statusEl.className = 'field-hint error';
     }
-  };
+  }
 
+  // --- Extract Profile button ---
+  document.getElementById('extract-btn').onclick = async () => {
+    const text = document.getElementById('resume_text').value.trim();
+    if (!text) { setExtractStatus('Upload a PDF or paste resume text first', 'error'); return; }
+    const btn = document.getElementById('extract-btn');
+    btn.disabled = true; btn.textContent = '⏳ Extracting...';
+    await runExtraction(text, null);
+    btn.disabled = false; btn.textContent = '🔍 Extract Profile';
+  };
   // --- Save ---
   document.getElementById('save-btn').onclick = async () => {
     const data = {};
