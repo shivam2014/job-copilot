@@ -260,6 +260,8 @@ async function testConnection() {
     if (reply) {
       hint.textContent = '✅ Connection OK — model responds';
       hint.className = 'field-hint success';
+      chrome.storage.sync.set({ config_tested: 'ok' });
+      updateConfigStatus();
     } else {
       hint.textContent = '⚠️ Connected but empty response — model may not be ready';
       hint.className = 'field-hint';
@@ -267,8 +269,54 @@ async function testConnection() {
   } catch (err) {
     hint.textContent = `❌ ${err.message}`;
     hint.className = 'field-hint error';
+    chrome.storage.sync.set({ config_tested: 'error' });
+    updateConfigStatus();
   }
 }
+
+// --- Config Status ---
+function updateConfigStatus() {
+  const badge = document.getElementById('config-status');
+  if (!badge) return;
+  
+  const baseUrl = (document.getElementById('llm_base_url').value || '').trim();
+  const apiKey = document.getElementById('llm_api_key').value || '';
+  const model = document.getElementById('llm_model').value || '';
+  
+  // Check saved test status
+  chrome.storage.sync.get('config_tested', (result) => {
+    if (result.config_tested === 'ok') {
+      badge.className = 'config-badge connected';
+      badge.textContent = '✅ Connected';
+    } else if (result.config_tested === 'error') {
+      badge.className = 'config-badge error';
+      badge.textContent = '❌ Connection failed';
+    } else if (baseUrl && (baseUrl.includes('localhost') || baseUrl.includes('dummy'))) {
+      badge.className = 'config-badge untested';
+      badge.textContent = '⚠️ Default — configure or test';
+    } else if (baseUrl) {
+      badge.className = 'config-badge untested';
+      badge.textContent = '⚠️ Untested — test connection';
+    } else {
+      badge.className = 'config-badge untested';
+      badge.textContent = '⚠️ Not configured';
+    }
+  });
+}
+
+// Update config badge when fields change
+document.getElementById('llm_base_url').addEventListener('change', () => {
+  chrome.storage.sync.remove('config_tested');
+  updateConfigStatus();
+});
+document.getElementById('llm_api_key').addEventListener('change', () => {
+  chrome.storage.sync.remove('config_tested');
+  updateConfigStatus();
+});
+document.getElementById('llm_model').addEventListener('change', () => {
+  chrome.storage.sync.remove('config_tested');
+  updateConfigStatus();
+});
 
 // --- Token Usage ---
 async function renderTokenUsage() {

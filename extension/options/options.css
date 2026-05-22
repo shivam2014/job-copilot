@@ -247,3 +247,33 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
 #token-usage-content {
   min-height: 40px;
 }
+/* Config status badge */
+.config-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 10px;
+  letter-spacing: 0.3px;
+  margin-left: 8px;
+}
+.config-badge.untested {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.config-badge.connected {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.config-badge.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+.config-badge.checking {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  animation: pulse 1.5s infinite;
+}
