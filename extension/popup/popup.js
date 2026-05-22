@@ -67,8 +67,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       'profile_name', 'llm_base_url', 'resume_text', 'resume_full_data',
     ]);
     if (!profile.resume_text && !profile.resume_full_data) {
-      msg.innerHTML = '⚠️ <a href="#" id="msg-settings">Upload your resume in Settings</a> first → extract your profile → then use AI questions';
-    } else if (!profile.profile_name) {
+      msg.innerHTML = '💡 <a href="#" id="msg-settings">Upload your resume in Settings</a> for AI-powered question answers';
+    } 
+    if (!profile.profile_name) {
       msg.innerHTML = '⚠️ Click "Extract Profile" in <a href="#" id="msg-settings">Settings</a> or type your name manually';
     } else if (!profile.llm_base_url) {
       msg.innerHTML = '⚠️ Configure your <a href="#" id="msg-settings">AI Engine endpoint</a>';
