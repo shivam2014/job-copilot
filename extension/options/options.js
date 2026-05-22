@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         signal: extractAbort.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 4000) }], temperature: 0.01, max_tokens: 8000 }),
+        body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 4000) }], temperature: 0.01, max_tokens: 4000 }),
       });
       if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(function() { return resp.statusText; })));
       const data = await resp.json();
@@ -132,8 +132,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (depth === 0) { start = i; break; }
       }
       if (start === -1) throw new Error('Unbalanced JSON');
-      var jsonStr = raw.slice(start, end + 1);
-      const profile = JSON.parse(jsonStr);
+var jsonStr = raw.slice(start, end + 1);
+      // Sanitize common LLM JSON issues: single quotes, trailing commas, truncation
+      jsonStr = jsonStr.replace(/[\u2018\u2019\u0027]/g, '"'); // Replace smart & ASCII single quotes with double
+      jsonStr = jsonStr.replace(/\u201c|\u201d/g, '"'); // Replace smart double quotes
+      jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Remove trailing commas before }
+      jsonStr = jsonStr.replace(/,\s*\]/g, ']'); // Remove trailing commas before ]
+      // Fix unquoted keys (e.g. {name: "value"} -> {"name": "value"})
+      jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
+      // Try parsing, if fails try to fix and retry
+      var profile;
+      try {
+        profile = JSON.parse(jsonStr);
+      } catch (e) {
+        // Last resort: try finding valid JSON by scanning for patterns
+        console.log('JC JSON parse error, trying recovery...');
+        // Try wrapping unquoted strings in single quotes (rare LLM output)
+        jsonStr = jsonStr.replace(/:\s*'([^']*?)'([,}])/g, ':"$1"$2');
+        try { profile = JSON.parse(jsonStr); } catch(e2) {
+          throw new Error('Could not parse API response as JSON: ' + jsonStr.substring(0, 100));
+        }
+      }
       const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
       // Store full resume data for AI context
       var fullData = { extractedFields: {}, rawSections: {} };
