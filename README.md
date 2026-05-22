@@ -2,96 +2,85 @@
 
 AI-powered job application autofiller. Bring your own LLM endpoint.
 
+## How it works
+
+```
+1. SETTINGS                         2. ON A JOB PAGE
+   ┌────────────────────┐              ┌──────────────────────┐
+   │ Paste resume text  │              │ JC button appears    │
+   │ → "Extract Profile"│              │                      │
+   │   ↓                │              │ "Fill Personal"      │
+   │ Name, Email, Phone │   ← you     │   → from profile     │
+   │ LinkedIn, GitHub…  │   verify    │                      │
+   │   ↓                │              │ "Fill AI Questions"  │
+   │ LLM endpoint config│              │   → generates from   │
+   │ (any OpenAI API)   │              │     resume + JD      │
+   └────────────────────┘              │   → saves Q&A bank   │
+                                       └──────────────────────┘
+```
+
 ## Features
 
-- **Autofill personal fields** — name, email, phone, LinkedIn, etc.
-- **AI-generated answers** for custom application questions — uses your resume + job description as context
-- **Bring your own LLM** — supports any OpenAI-compatible API (OpenAI, local llama.cpp, Ollama, vLLM, etc.)
-- **Review before submit** — nothing is submitted automatically
-- **Works on any ATS** — Greenhouse, Workday, Lever, Oracle Cloud, iCIMS, and more
-- **Private** — your API key and resume stay in your browser
+- **Resume → Profile extraction** — paste your resume, click "Extract", LLM fills your profile fields
+- **Verified profile** — you review and edit before use
+- **Form autofill** — personal fields from profile, custom questions from AI
+- **Bring your own LLM** — any OpenAI-compatible endpoint (OpenAI, llama.cpp, Ollama, vLLM, Nyro)
+- **Saved Q&A bank** — answers auto-save, reuse across applications
+- **Works on any ATS** — Workday, Greenhouse, Lever, Oracle Cloud, iCIMS, etc.
+- **Review before submit** — nothing submitted automatically
+- **Private** — all data in your browser, no external servers except your LLM endpoint
 - **Open source** — MIT license
 
 ## Installation
 
-1. Download or clone this repo
-2. Open Chrome → `chrome://extensions`
-3. Enable **Developer mode** (top-right toggle)
-4. Click **Load unpacked**
-5. Select the `extension/` folder
+1. Open Chrome → `chrome://extensions`
+2. Enable **Developer mode** (top-right)
+3. Click **Load unpacked** → select `extension/` folder
+4. Pin the extension from the puzzle icon in the toolbar
 
 ## Setup
 
-After installing, click the extension icon → **Settings**:
+### Step 1: Paste resume
+Open extension **Settings** → paste your full resume text → click **"Extract Profile from Resume"**
 
-### Profile
-Fill in your personal details (name, email, phone, LinkedIn, GitHub, etc.).
+The AI reads your resume and pre-fills: name, email, phone, LinkedIn, GitHub, address, work authorization.
 
-### Resume
-Paste your resume text. This is used as context for AI-generated answers.
+### Step 2: Review profile
+Edit any field the AI got wrong. These become the **source of truth** for form filling.
 
-### LLM Configuration
-Configure any OpenAI-compatible endpoint:
+### Step 3: Configure LLM
+Set your OpenAI-compatible endpoint:
 
-| Setting | Example | Notes |
-|---------|---------|-------|
-| API Base URL | `https://api.openai.com/v1` | Or `http://localhost:8080/v1` for local |
-| API Key | `sk-...` | Use `dummy` for local endpoints that don't need auth |
-| Model | `gpt-4o-mini` | Or whatever your endpoint provides |
+| Setting | Default (Nyro) | OpenAI |
+|---------|----------------|--------|
+| API Base URL | `http://localhost:19530/v1` | `https://api.openai.com/v1` |
+| API Key | `dummy` | `sk-...` |
+| Model | `deepseek-v4-flash-2` | `gpt-4o-mini` |
 
 ## Usage
 
 1. Go to any job application page
-2. A floating **JC** button appears in the bottom-right corner
-3. Click it to open the control panel
-4. Click **Fill Personal Fields** to fill basic info
-5. Click **Fill AI Questions** to generate answers for custom questions
+2. A floating **JC** button appears bottom-right → click it
+3. **Fill Personal** — fills name, email, phone, etc. from your verified profile
+4. **Fill AI Questions** — generates answers for textareas using your resume + job description
+5. Inline **✨** button on each textarea for individual AI fills
 6. Review everything before hitting submit
 
-You can also click the extension icon in the toolbar for the same controls.
-
-### Inline AI assist
-On textarea fields, a ✨ button appears. Click it to generate an AI answer for just that question.
-
-## Architecture
-
-```
-┌──────────────────────┐
-│  Chrome Extension     │
-│                      │
-│  ┌────────────────┐  │
-│  │ Popup (toolbar) │  │  → Controls + status
-│  └────────────────┘  │
-│  ┌────────────────┐  │
-│  │ Content script  │  │  → Form detection + filling
-│  └────────────────┘  │
-│  ┌────────────────┐  │
-│  │ Options page    │  │  → Profile + LLM config
-│  └────────────────┘  │
-│  ┌────────────────┐  │
-│  │ LLM Client     │  │  → Calls your API endpoint
-│  └────────────────┘  │
-└──────────────────────┘
-         │
-         ▼
-  Any OpenAI-compatible API
-  (OpenAI / local / Ollama / vLLM)
-```
-
-## Privacy
-
-- Your API key is stored in `chrome.storage.sync` (encrypted by Chrome)
-- Your resume is stored locally in your browser
-- No data is sent to any server except your configured LLM endpoint
-- No analytics, no tracking, no third-party services
+Answers you generate are automatically saved in **Saved Answers** (Settings) for reuse.
 
 ## Development
 
 ```bash
 git clone https://github.com/shivam2014/job-copilot
 cd job-copilot/extension
-# Edit files, then reload in chrome://extensions
+# Edit, then reload in chrome://extensions
 ```
+
+## Privacy
+
+- API key and resume stored in `chrome.storage.sync` (encrypted by Chrome)
+- No data sent anywhere except your configured LLM endpoint
+- No analytics, no tracking, no third-party services
 
 ## License
 

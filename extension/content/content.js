@@ -180,6 +180,7 @@ async function fillAIQuestions() {
         question, jobDescription, profile.resume_text
       );
       await FormDetector.fillField(field, answer);
+      await saveAnswer(field.label || field.identifiers, answer);
       filled++;
     } catch (err) {
       console.error('JC: LLM error for field:', field.label, err);
@@ -244,6 +245,7 @@ function injectAIAssistButtons() {
         try {
           const answer = await LLMClient.generateAnswer(question, jd, profile.resume_text);
           await FormDetector.fillField(fieldInfo, answer);
+          await saveAnswer(question, answer);
           showStatus('Question answered!', 'success');
         } catch (err) {
           showStatus(`Error: ${err.message}`, 'error');
@@ -259,6 +261,21 @@ function showStatus(msg, type) {
   el.className = `jc-status ${type}`;
   el.textContent = msg;
   setTimeout(() => { el.textContent = ''; el.className = 'jc-status'; }, 5000);
+}
+
+// --- Saved Answers Bank ---
+async function saveAnswer(question, answer) {
+  if (!question || !answer) return;
+  const result = await chrome.storage.sync.get("saved_answers");
+  let answers = result.saved_answers || [];
+  answers = answers.filter(qa => qa.question.toLowerCase().trim() !== question.toLowerCase().trim());
+  answers.unshift({
+    question: question.trim(),
+    answer: answer.trim(),
+    date: new Date().toISOString().split("T")[0],
+  });
+  if (answers.length > 50) answers = answers.slice(0, 50);
+  await chrome.storage.sync.set({ saved_answers: answers });
 }
 
 // Listen for fill requests from popup

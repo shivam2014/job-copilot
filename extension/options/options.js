@@ -187,3 +187,15 @@ function showMsg(text, type) {
   el.className = 'save-msg ' + type;
   setTimeout(() => { el.textContent = ''; el.className = 'save-msg'; }, 4000);
 }
+
+// --- Delete saved answers ---
+document.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('qa-delete')) {
+    const index = parseInt(e.target.dataset.index);
+    const result = await chrome.storage.sync.get('saved_answers');
+    const answers = result.saved_answers || [];
+    answers.splice(index, 1);
+    await chrome.storage.sync.set({ saved_answers: answers });
+    renderSavedAnswers(answers);
+  }
+});

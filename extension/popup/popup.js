@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const actionsSection = document.getElementById('actions-section');
   const msg = document.getElementById('msg');
 
-  // Check if we're on a job page
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.url?.startsWith('http')) {
     setStatus('Open a job application page to use Copilot', 'idle');
@@ -15,28 +14,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   try {
-    // Check if content script is loaded
     const resp = await chrome.tabs.sendMessage(tab.id, { type: 'jc_ping' }).catch(() => null);
     if (!resp?.ok) {
       setStatus('Loading... try refreshing the page', 'loading');
       return;
     }
 
-    // Get detected fields
     const fields = await chrome.tabs.sendMessage(tab.id, { type: 'jc_get_fields' });
-    if (!fields) {
+    if (!fields || (fields.personal.length + fields.questions.length + fields.selects.length + fields.files.length) === 0) {
       setStatus('No application form detected', 'idle');
       return;
     }
 
     const total = fields.personal.length + fields.questions.length + 
                   fields.selects.length + fields.files.length;
-    if (total === 0) {
-      setStatus('No application form detected', 'idle');
-      return;
-    }
-
-    // Show stats
     document.getElementById('personal-count').textContent = fields.personal.length;
     document.getElementById('ai-count').textContent = fields.questions.length;
     document.getElementById('select-count').textContent = fields.selects.length;
@@ -46,47 +37,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     fieldsSection.style.display = 'block';
     actionsSection.style.display = 'block';
 
-    // Check if profile is configured
+    // Check setup status
     const profile = await chrome.storage.sync.get([
       'profile_name', 'llm_base_url', 'resume_text',
     ]);
-    if (!profile.profile_name) {
-      msg.textContent = '⚠️ Set up your profile in Settings first';
+    if (!profile.resume_text) {
+      msg.innerHTML = '⚠️ <a href="#" id="msg-settings">Upload your resume in Settings</a> first → extract your profile → then use AI questions';
+    } else if (!profile.profile_name) {
+      msg.innerHTML = '⚠️ Click "Extract Profile" in <a href="#" id="msg-settings">Settings</a> or type your name manually';
     } else if (!profile.llm_base_url) {
-      msg.textContent = '⚠️ Configure your LLM endpoint in Settings';
+      msg.innerHTML = '⚠️ Configure your <a href="#" id="msg-settings">AI Engine endpoint</a>';
     } else {
-      msg.textContent = '✅ Profile and LLM configured';
+      msg.textContent = `✅ ${profile.profile_name} — profile + AI ready`;
     }
+
+    // Make settings link work
+    document.querySelectorAll('#msg-settings, #open-settings').forEach(el => {
+      el?.addEventListener('click', (e) => {
+        e.preventDefault();
+        chrome.runtime.openOptionsPage();
+      });
+    });
 
     // Button handlers
     document.getElementById('fill-personal').onclick = async () => {
       setStatus('Filling personal fields...', 'loading');
-      const r = await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_personal' });
-      if (r?.ok) setStatus('Personal fields filled!', 'success');
+      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_personal' });
+      setStatus('Personal fields filled!', 'success');
     };
 
     document.getElementById('fill-ai').onclick = async () => {
       setStatus('Generating AI answers...', 'loading');
-      const r = await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_ai' });
-      if (r?.ok) setStatus('AI questions filled!', 'success');
+      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_ai' });
+      setStatus('AI questions filled!', 'success');
     };
 
     document.getElementById('fill-all').onclick = async () => {
       setStatus('Filling all fields...', 'loading');
       await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_personal' });
-      const r = await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_ai' });
-      if (r?.ok) setStatus('All fields filled!', 'success');
+      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_ai' });
+      setStatus('All fields filled!', 'success');
     };
 
   } catch (err) {
     setStatus(`Error: ${err.message}`, 'error');
   }
-
-  // Footer links
-  document.getElementById('open-settings').onclick = (e) => {
-    e.preventDefault();
-    chrome.runtime.openOptionsPage();
-  };
 
   document.getElementById('reload-page').onclick = (e) => {
     e.preventDefault();
