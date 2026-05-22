@@ -516,3 +516,98 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
   font-size: 11px;
   white-space: nowrap;
 }
+
+/* Card-based resume editor */
+.rd-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  margin-top: 12px;
+}
+.rd-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.rd-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.rd-card-field {
+  margin-bottom: 8px;
+}
+.rd-card-field label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-bottom: 2px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.rd-card-field input,
+.rd-card-field textarea {
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  width: 100%;
+}
+.rd-card-field textarea {
+  resize: vertical;
+  min-height: 40px;
+}
+.rd-card-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.rd-card-row .rd-card-field {
+  flex: 1;
+  margin-bottom: 0;
+}
+.rd-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.rd-card .rd-card-del {
+  float: right;
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 8px;
+  transition: all 0.15s;
+}
+.rd-card .rd-card-del:hover {
+  background: #fef2f2;
+  color: #ef4444;
+  border-color: #fecaca;
+}
+.rd-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 2px;
+}
+.rd-card-sub {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+.rd-card-desc {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+.rd-add-card {
+  margin-bottom: 8px;
+}

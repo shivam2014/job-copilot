@@ -139,33 +139,44 @@
         </div>
       </div>
 
-      <!-- Experience quick add -->
-      <div class="rd-editor-row">
-        <div class="rd-editor-field" style="flex:2">
-          <label>Experience</label>
-          <div id="rd-experience-list" class="rd-list"></div>
-          <div class="rd-add-row">
-            <input type="text" id="rd-exp-title" placeholder="Title" style="flex:2">
-            <input type="text" id="rd-exp-company" placeholder="Company" style="flex:2">
-            <input type="text" id="rd-exp-dates" placeholder="Start - End" style="flex:1">
-            <button id="rd-exp-add" class="btn btn-sm">+ Add</button>
+      <!-- Experience cards -->
+      <div class="rd-section-label">Experience</div>
+      <div id="rd-experience-list" class="rd-card-list"></div>
+      <div class="rd-add-card" id="rd-exp-form" style="display:none">
+        <div class="rd-card">
+          <div class="rd-card-field"><label>Job Title</label><input type="text" id="rd-exp-title" placeholder="e.g. Lead Systems Engineer"></div>
+          <div class="rd-card-field"><label>Company</label><input type="text" id="rd-exp-company" placeholder="e.g. CycloTech GmbH"></div>
+          <div class="rd-card-row">
+            <div class="rd-card-field"><label>Start Date</label><input type="text" id="rd-exp-start" placeholder="Oct 2020"></div>
+            <div class="rd-card-field"><label>End Date</label><input type="text" id="rd-exp-end" placeholder="Jul 2024"></div>
+          </div>
+          <div class="rd-card-field"><label>Description</label><textarea id="rd-exp-desc" rows="2" placeholder="Key achievements..."></textarea></div>
+          <div class="rd-card-actions">
+            <button id="rd-exp-save" class="btn btn-sm btn-accent" style="padding:6px 14px;font-size:12px">💾 Save Experience</button>
+            <button id="rd-exp-cancel" class="btn btn-sm" style="padding:6px 14px;font-size:12px">Cancel</button>
           </div>
         </div>
       </div>
+      <button id="rd-exp-show-form" class="btn btn-sm" style="margin-top:4px;width:100%;padding:8px;border:1px dashed #d1d5db;background:white;color:#6b7280">+ Add Experience</button>
 
-      <!-- Education quick add -->
-      <div class="rd-editor-row">
-        <div class="rd-editor-field" style="flex:2">
-          <label>Education</label>
-          <div id="rd-education-list" class="rd-list"></div>
-          <div class="rd-add-row">
-            <input type="text" id="rd-edu-degree" placeholder="Degree" style="flex:2">
-            <input type="text" id="rd-edu-school" placeholder="School" style="flex:2">
-            <input type="text" id="rd-edu-dates" placeholder="Start - End" style="flex:1">
-            <button id="rd-edu-add" class="btn btn-sm">+ Add</button>
+      <!-- Education cards -->
+      <div class="rd-section-label">Education</div>
+      <div id="rd-education-list" class="rd-card-list"></div>
+      <div class="rd-add-card" id="rd-edu-form" style="display:none">
+        <div class="rd-card">
+          <div class="rd-card-field"><label>Degree</label><input type="text" id="rd-edu-degree" placeholder="e.g. Masters in Aerospace Engineering"></div>
+          <div class="rd-card-field"><label>School / University</label><input type="text" id="rd-edu-school" placeholder="e.g. ISAE-SUPAERO"></div>
+          <div class="rd-card-row">
+            <div class="rd-card-field"><label>Start Date</label><input type="text" id="rd-edu-start" placeholder="Sep 2016"></div>
+            <div class="rd-card-field"><label>End Date</label><input type="text" id="rd-edu-end" placeholder="Oct 2018"></div>
+          </div>
+          <div class="rd-card-actions">
+            <button id="rd-edu-save" class="btn btn-sm btn-accent" style="padding:6px 14px;font-size:12px">💾 Save Education</button>
+            <button id="rd-edu-cancel" class="btn btn-sm" style="padding:6px 14px;font-size:12px">Cancel</button>
           </div>
         </div>
       </div>
+      <button id="rd-edu-show-form" class="btn btn-sm" style="margin-top:4px;width:100%;padding:8px;border:1px dashed #d1d5db;background:white;color:#6b7280">+ Add Education</button>
 
       <!-- Read-only display + raw JSON editor -->
       <div id="resume-data-content" style="margin-bottom:8px">

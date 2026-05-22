@@ -402,47 +402,75 @@ function saveResumeDataDebounced() {
   }, 500);
 }
 
-// Add experience item
-document.getElementById('rd-exp-add').onclick = function() {
+// Show/hide experience form
+document.getElementById('rd-exp-show-form').onclick = function() {
+  document.getElementById('rd-exp-form').style.display = 'block';
+  this.style.display = 'none';
+};
+document.getElementById('rd-exp-cancel').onclick = function() {
+  document.getElementById('rd-exp-form').style.display = 'none';
+  document.getElementById('rd-exp-show-form').style.display = 'block';
+};
+
+document.getElementById('rd-exp-save').onclick = function() {
   var data = getResumeData();
   if (!data.rawSections) data.rawSections = {};
   if (!data.rawSections.experience) data.rawSections.experience = [];
   var title = document.getElementById('rd-exp-title').value.trim();
   var company = document.getElementById('rd-exp-company').value.trim();
-  var dates = document.getElementById('rd-exp-dates').value.trim();
+  var start = document.getElementById('rd-exp-start').value.trim();
+  var end = document.getElementById('rd-exp-end').value.trim();
+  var desc = document.getElementById('rd-exp-desc').value.trim();
   if (!title && !company) return;
-  data.rawSections.experience.push({ title: title, company: company, start_date: dates.split(' - ')[0] || '', end_date: dates.split(' - ')[1] || '' });
+  data.rawSections.experience.push({ title: title, company: company, start_date: start, end_date: end, description: desc });
   document.getElementById('rd-exp-title').value = '';
   document.getElementById('rd-exp-company').value = '';
-  document.getElementById('rd-exp-dates').value = '';
+  document.getElementById('rd-exp-start').value = '';
+  document.getElementById('rd-exp-end').value = '';
+  document.getElementById('rd-exp-desc').value = '';
   document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
   saveResumeData(data);
   renderEditableLists(data);
   renderResumeDataDisplay(data);
+  document.getElementById('rd-exp-form').style.display = 'none';
+  document.getElementById('rd-exp-show-form').style.display = 'block';
 };
 
-// Add education item
-document.getElementById('rd-edu-add').onclick = function() {
+// Show/hide education form
+document.getElementById('rd-edu-show-form').onclick = function() {
+  document.getElementById('rd-edu-form').style.display = 'block';
+  this.style.display = 'none';
+};
+document.getElementById('rd-edu-cancel').onclick = function() {
+  document.getElementById('rd-edu-form').style.display = 'none';
+  document.getElementById('rd-edu-show-form').style.display = 'block';
+};
+
+document.getElementById('rd-edu-save').onclick = function() {
   var data = getResumeData();
   if (!data.rawSections) data.rawSections = {};
   if (!data.rawSections.education) data.rawSections.education = [];
   var degree = document.getElementById('rd-edu-degree').value.trim();
   var school = document.getElementById('rd-edu-school').value.trim();
-  var dates = document.getElementById('rd-edu-dates').value.trim();
+  var start = document.getElementById('rd-edu-start').value.trim();
+  var end = document.getElementById('rd-edu-end').value.trim();
   if (!degree && !school) return;
-  data.rawSections.education.push({ degree: degree, school: school, start_date: dates.split(' - ')[0] || '', end_date: dates.split(' - ')[1] || '' });
+  data.rawSections.education.push({ degree: degree, school: school, start_date: start, end_date: end });
   document.getElementById('rd-edu-degree').value = '';
   document.getElementById('rd-edu-school').value = '';
-  document.getElementById('rd-edu-dates').value = '';
+  document.getElementById('rd-edu-start').value = '';
+  document.getElementById('rd-edu-end').value = '';
   document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
   saveResumeData(data);
   renderEditableLists(data);
   renderResumeDataDisplay(data);
+  document.getElementById('rd-edu-form').style.display = 'none';
+  document.getElementById('rd-edu-show-form').style.display = 'block';
 };
 
 // Delete from a list (delegated)
 document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('rd-list-item-del')) {
+  if (e.target.classList.contains('rd-card-del') || e.target.classList.contains('rd-list-item-del')) {
     var key = e.target.dataset.list;
     var idx = parseInt(e.target.dataset.index);
     var data = getResumeData();
@@ -467,19 +495,32 @@ document.getElementById('toggle-json-editor').onclick = function() {
 function renderEditableLists(data) {
   var sections = data.rawSections || {};
   
-  // Experience list
+  // Experience cards
   var expList = document.getElementById('rd-experience-list');
   if (expList) {
     expList.innerHTML = (sections.experience || []).map(function(item, i) {
-      return '<div class="rd-list-item"><span class="rd-list-item-text">' + escHtml(item.title || '') + ' @ ' + escHtml(item.company || '') + '</span><button class="rd-list-item-del" data-list="experience" data-index="' + i + '">✕</button></div>';
+      var html = '<div class="rd-card">';
+      html += '<button class="rd-card-del" data-list="experience" data-index="' + i + '">✕</button>';
+      if (item.title) html += '<div class="rd-card-title">' + escHtml(item.title) + '</div>';
+      if (item.company) html += '<div class="rd-card-sub">' + escHtml(item.company) + '</div>';
+      if (item.start_date || item.end_date) html += '<div class="rd-card-sub">' + escHtml(item.start_date || '') + ' - ' + escHtml(item.end_date || '') + '</div>';
+      if (item.description) html += '<div class="rd-card-desc">' + escHtml(item.description) + '</div>';
+      html += '</div>';
+      return html;
     }).join('');
   }
   
-  // Education list
+  // Education cards
   var eduList = document.getElementById('rd-education-list');
   if (eduList) {
     eduList.innerHTML = (sections.education || []).map(function(item, i) {
-      return '<div class="rd-list-item"><span class="rd-list-item-text">' + escHtml(item.degree || '') + ' @ ' + escHtml(item.school || '') + '</span><button class="rd-list-item-del" data-list="education" data-index="' + i + '">✕</button></div>';
+      var html = '<div class="rd-card">';
+      html += '<button class="rd-card-del" data-list="education" data-index="' + i + '">✕</button>';
+      if (item.degree) html += '<div class="rd-card-title">' + escHtml(item.degree) + '</div>';
+      if (item.school) html += '<div class="rd-card-sub">' + escHtml(item.school) + '</div>';
+      if (item.start_date || item.end_date) html += '<div class="rd-card-sub">' + escHtml(item.start_date || '') + ' - ' + escHtml(item.end_date || '') + '</div>';
+      html += '</div>';
+      return html;
     }).join('');
   }
   
