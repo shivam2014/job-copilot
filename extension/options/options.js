@@ -610,7 +610,7 @@ function renderEditableLists(data) {
       if (item.description) html += '<div class="rd-card-desc">' + escHtml(item.description) + '</div>';
       html += '</div>';  // end content left
       html += '<div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';  // buttons right
-      html += '<button class="rd-card-edit" data-list="experience" data-index="' + i + '">Edit</button>';
+      html += '<button class="rd-card-edit" data-list="experience" data-index="' + i + '">✏️</button>';
       html += '<button class="rd-card-del" data-list="experience" data-index="' + i + '">✕</button>';
       html += '</div></div>';  // end buttons + end flex
       html += '</div>';
@@ -637,7 +637,7 @@ function renderEditableLists(data) {
           }
       html += '</div>';  // end content left
       html += '<div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';  // buttons right
-      html += '<button class="rd-card-edit" data-list="education" data-index="' + i + '">Edit</button>';
+      html += '<button class="rd-card-edit" data-list="education" data-index="' + i + '">✏️</button>';
       html += '<button class="rd-card-del" data-list="education" data-index="' + i + '">✕</button>';
       html += '</div></div>';  // end buttons + end flex
       html += '</div>';
