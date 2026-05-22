@@ -21,6 +21,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('llm_base_url').value = 'http://localhost:19530/v1';
   if (!document.getElementById('llm_api_key').value)
     document.getElementById('llm_api_key').value = 'dummy';
+  // Clear model if it was a pre-filled default from an older version
+  const savedModel = document.getElementById('llm_model').value;
+  if (savedModel && ['gpt-4o-mini', 'deepseek-v4-flash-2'].includes(savedModel)) {
+    document.getElementById('llm_model').value = '';
+  }
   // Model loaded on focus from endpoint's /v1/models
 
   renderSavedAnswers(result.saved_answers || []);
