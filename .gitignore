@@ -1,17 +1,25 @@
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor
-*.swp
-*.swo
-*~
-
 # Dependencies
 node_modules/
-package.json
 package-lock.json
 
-# Extension build artifacts
-*.zip
-node_modules/
+# Chrome test profiles
+.jc-profile/
+
+# Throwaway test scripts
+jc_playwright*.js
+jc_test*.js
+launch_ext.mjs
+setup_jc.mjs
+check_ext.mjs
+
+# Test outputs
+test/
+
+# Screenshots
+*.png
+
+# macOS
+.DS_Store
+
+# Extension backups
+*.bak

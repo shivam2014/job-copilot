@@ -216,6 +216,39 @@ Expected models include: `deepseek-v4-flash-2`, `deepseek-v4-pro-2`, `kimi-k2.6-
 
 ---
 
+## Health Check (Run Before Debugging)
+
+Before starting a session, verify the environment is healthy:
+
+### 1. LLM endpoint reachable?
+```bash
+curl -s http://localhost:19530/v1/models | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',[])), 'models available')"
+```
+Expected: `7 models available` (or similar)
+
+### 2. Extension profile exists?
+```bash
+ls -d /tmp/jc-playwright-profile-v4/Default 2>/dev/null && echo "Profile exists" || echo "Profile missing — re-run setup"
+```
+
+### 3. Native host manifest healthy? (for Method 3)
+```bash
+cd /Users/shivam94/.codex/plugins/cache/chrome-local/codex-chrome/latest
+node scripts/check-native-host-manifest.js --json | python3 -c "import sys,json; d=json.load(sys.stdin); print('Manifest OK' if d.get('correct') else 'Manifest BROKEN — run installManifest.mjs')"
+```
+
+### 4. Chrome running?
+```bash
+ps aux | grep "Google Chrome" | grep -v grep | head -1
+```
+
+### 5. Extension files intact?
+```bash
+ls /Users/shivam94/job-copilot/extension/content/content.js /Users/shivam94/job-copilot/extension/content/form-detector.js /Users/shivam94/job-copilot/extension/content/content.css
+```
+
+---
+
 ## Session handoff notes
 
 - Always check `/Users/shivam94/job-copilot/handoff/` for the latest session notes.

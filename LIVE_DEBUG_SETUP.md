@@ -10,7 +10,7 @@ You launch Chrome with your profile (Bitwarden, cookies, etc.), navigate to a jo
 
 ---
 
-## ⚡ Method 3: codex-chrome Plugin (Most Seamless — When Working)
+## ⚡ Method 3: codex-chrome Plugin (Most Seamless — WORKS NOW)
 
 **This is the ideal method.** Zero friction for you. I connect to your already-running Chrome, claim your tabs, and inspect everything programmatically. You just browse normally.
 
@@ -43,25 +43,28 @@ const storage = await tab.playwright.evaluate(() =>
 );
 ```
 
-### Current Status: BLOCKED
+### Current Status: ✅ FIXED (2026-05-25)
 
-The native messaging host manifest is missing on this machine. Chrome doesn't know how to talk to the Codex extension's native host.
+The native messaging host manifest was missing. It has been fixed by running the plugin's `installManifest.mjs`:
 
-**To fix:** Open the Codex app → Plugins → Chrome → Reinstall.
+```bash
+cd /Users/shivam94/.codex/plugins/cache/chrome-local/codex-chrome/latest
+node -e "import('./scripts/installManifest.mjs').then(m => m.install())"
+```
 
-This will create the missing manifest file:
+This created:
 ```
 ~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.openai.codexextension.json
 ```
 
-Which tells Chrome: *"When the Codex extension asks for native messaging, launch this binary."*
-
-The binary already exists:
+Verifying:
+```bash
+cd /Users/shivam94/.codex/plugins/cache/chrome-local/codex-chrome/latest
+node scripts/check-native-host-manifest.js --json
+# → "correct": true, "problem": null
 ```
-/Users/shivam94/.codex/plugins/cache/chrome-local/codex-chrome/latest/extension-host/macos/arm64/extension-host
-```
 
-But Chrome can't find it without the manifest.
+**Important:** The browser-client only works from within the Codex app's MCP infrastructure. It cannot be tested from a standalone shell script. Use this method from within the Codex app.
 
 ### When This Works, It's Magic
 
