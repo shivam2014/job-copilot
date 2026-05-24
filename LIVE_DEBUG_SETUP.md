@@ -10,7 +10,73 @@ You launch Chrome with your profile (Bitwarden, cookies, etc.), navigate to a jo
 
 ---
 
-## Method 1: Chrome Remote Debugging (Recommended — I get full access)
+## ⚡ Method 3: codex-chrome Plugin (Most Seamless — When Working)
+
+**This is the ideal method.** Zero friction for you. I connect to your already-running Chrome, claim your tabs, and inspect everything programmatically. You just browse normally.
+
+### What you do
+
+Nothing special. Just use Chrome normally:
+
+1. Open Chrome (your regular profile — Bitwarden, cookies, everything)
+2. Navigate to the Oracle job page
+3. Click "Apply Now"
+4. Login with Bitwarden when prompted
+5. Continue to the application form
+6. Tell me "I'm at the form" or "JC button isn't showing"
+
+### What I do
+
+I connect to your Chrome and get full access:
+
+```js
+const browser = await agent.browsers.get("extension");
+const tabs = await browser.user.openTabs();
+const oracleTab = tabs.find(t => t.url.includes('oraclecloud.com'));
+const tab = await browser.user.claimTab(oracleTab);
+
+// Now I can do everything:
+await tab.playwright.evaluate(() => FormDetector.detect());
+await tab.dev.logs({ filter: 'JC:' });
+const storage = await tab.playwright.evaluate(() =>
+  new Promise(r => chrome.storage.sync.get(null, r))
+);
+```
+
+### Current Status: BLOCKED
+
+The native messaging host manifest is missing on this machine. Chrome doesn't know how to talk to the Codex extension's native host.
+
+**To fix:** Open the Codex app → Plugins → Chrome → Reinstall.
+
+This will create the missing manifest file:
+```
+~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.openai.codexextension.json
+```
+
+Which tells Chrome: *"When the Codex extension asks for native messaging, launch this binary."*
+
+The binary already exists:
+```
+/Users/shivam94/.codex/plugins/cache/chrome-local/codex-chrome/latest/extension-host/macos/arm64/extension-host
+```
+
+But Chrome can't find it without the manifest.
+
+### When This Works, It's Magic
+
+- ✅ No special Chrome flags
+- ✅ No screenshots to share
+- ✅ No console snippets to paste
+- ✅ Works with your real Chrome profile (Bitwarden, cookies, extensions)
+- ✅ I claim your live tab, you keep using it
+- ✅ Full Playwright access: clicks, fills, evaluates, screenshots, logs
+
+---
+
+## Method 1: Chrome Remote Debugging (Works Now, Requires Flags)
+
+**Use this until Method 3 is fixed.**
 
 ### Step 1: You launch Chrome with remote debugging
 
@@ -19,7 +85,6 @@ You launch Chrome with your profile (Bitwarden, cookies, etc.), navigate to a jo
 ```bash
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
   --remote-debugging-port=9222 \
-  --user-data-dir="/Users/$USER/Library/Application Support/Google/Chrome" \
   --load-extension="/Users/shivam94/job-copilot/extension"
 ```
 
@@ -47,33 +112,33 @@ const { chromium } = require('playwright');
   // Connect to YOUR Chrome instance
   const browser = await chromium.connectOverCDP('http://localhost:9222');
   const context = browser.contexts()[0];
-  
+
   // Find the Oracle tab
   const pages = context.pages();
   const oraclePage = pages.find(p => p.url().includes('oraclecloud.com'));
-  
+
   if (!oraclePage) {
     console.log('No Oracle tab found');
     return;
   }
-  
+
   // I can now do everything:
   // - Read console logs
   // - Inspect DOM
   // - Check storage
   // - Take screenshots
   // - Read FormDetector state
-  
+
   const state = await oraclePage.evaluate(() => ({
     hasBtn: !!document.getElementById('jc-float-btn'),
     hasPanel: !!document.getElementById('jc-panel'),
     panelOpen: document.getElementById('jc-panel')?.classList.contains('open') || false,
   }));
   console.log('JC state:', state);
-  
+
   // Screenshot for you to see
   await oraclePage.screenshot({ path: '/tmp/jc_live_inspect.png' });
-  
+
   // Read console logs
   const logs = await oraclePage.evaluate(() => {
     if (window.__jcLogs) return window.__jcLogs;
@@ -81,13 +146,13 @@ const { chromium } = require('playwright');
     return [];
   });
   console.log('Logs:', logs);
-  
+
   // Check storage
   const storage = await oraclePage.evaluate(() =>
     new Promise(r => chrome.storage.sync.get(null, r))
   );
   console.log('Storage keys:', Object.keys(storage));
-  
+
   // Check detected fields
   const fields = await oraclePage.evaluate(() => {
     if (typeof FormDetector === 'undefined') return { error: 'not loaded' };
@@ -117,9 +182,9 @@ const { chromium } = require('playwright');
 
 ---
 
-## Method 2: You Share Screenshots + Console (Simplest)
+## Method 2: You Share Screenshots + Console (Simplest, Most Manual)
 
-If remote debugging feels too heavy:
+If Method 3 is broken and Method 1 feels too heavy:
 
 ### Step 1: Open DevTools before you start
 
@@ -167,25 +232,6 @@ Screenshots of:
 3. Extension options page (`chrome-extension://<extId>/options/options.html`)
 
 I can diagnose from those.
-
----
-
-## Method 3: codex-chrome Plugin (If Native Host Works)
-
-The codex-chrome plugin can connect to your actual Chrome browser, but it requires the Codex Chrome Extension + native messaging host to be installed.
-
-Currently the native host manifest is missing on this machine. If you install it from the Codex plugin UI, I can:
-
-```js
-// List your open tabs
-const tabs = await browser.user.openTabs();
-// Claim the Oracle tab
-const oracleTab = await browser.user.claimTab(tabs.find(t => t.url.includes('oracle')));
-// Full programmatic control
-await oracleTab.playwright.evaluate(() => FormDetector.detect());
-```
-
-**To enable:** Open Codex app → Plugins → Chrome → Reinstall if needed.
 
 ---
 
