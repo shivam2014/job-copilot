@@ -2,28 +2,42 @@
 
 let detectedFields = null;
 let jcPanel = null;
+let panelWasOpen = false;
+
+function isLoginScreen(fields) {
+  const applicationFields = fields.personal.filter(function(f) { return f.name !== 'email' && f.name !== 'unknown'; });
+  return applicationFields.length === 0 && fields.selects.length === 0 && fields.files.length === 0;
+}
+
+document.addEventListener('click', function(e) {
+  var t = e.target.closest('button, a') || e.target;
+  if (t.tagName === 'BUTTON' || t.tagName === 'A') {
+    var txt = (t.textContent || '').toLowerCase();
+    if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
+      setTimeout(function() {
+        var fields = FormDetector.detect();
+        var total = fields.personal.length + fields.questions.length;
+        if (total > 0) {
+          if (!document.getElementById('jc-float-btn')) {
+            injectFloatingButton();
+          }
+          injectAIAssistButtons();
+          // Restore panel open state after SPA transition
+          const p = document.getElementById('jc-panel');
+          if (p && panelWasOpen && !p.classList.contains('open')) {
+            p.classList.add('open');
+            updatePanel();
+          }
+          chrome.runtime.sendMessage({ type: 'jc_fields_detected', count: total }).catch(function() {});
+        }
+      }, 3000);
+    }
+  }
+});
 
 // Main init
 async function init() {
-  // Wait for page to settle (dynamic SPAs)
-  // Re-detect after Apply button click (SPA transition)
-  document.addEventListener('click', function(e) {
-    var t = e.target;
-    if (t.tagName === 'BUTTON' || t.tagName === 'A') {
-      var txt = (t.textContent || '').toLowerCase();
-      if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
-        setTimeout(function() {
-          var fields = FormDetector.detect();
-          var total = fields.personal.length + fields.questions.length;
-          if (total > 0) {
-            injectAIAssistButtons();
-            chrome.runtime.sendMessage({ type: 'jc_fields_detected', count: total }).catch(function() {});
-          }
-        }, 3000);
-      }
-    }
-  });
-  
+
   setTimeout(function() {
     detectedFields = FormDetector.detect();
     const totalFields = detectedFields.personal.length + 
@@ -31,6 +45,27 @@ async function init() {
                         detectedFields.selects.length;
 
     if (totalFields === 0) return; // No form detected
+
+    if (isLoginScreen(detectedFields)) {
+      console.log('JC: Login-only screen, waiting for application form...');
+      // Still inject button and auto-fill email
+      injectFloatingButton();
+      setTimeout(async function() {
+        try {
+          const profile = await chrome.storage.sync.get(['profile_email']);
+          if (profile.profile_email) {
+            const fields = FormDetector.detect();
+            for (const f of fields.personal) {
+              if (f.name === 'email') {
+                await FormDetector.fillField(f, profile.profile_email);
+                console.log('JC: Auto-filled email on login screen');
+              }
+            }
+          }
+        } catch(e) {}
+      }, 3000);
+      return;
+    }
     
     // Auto-fill personal fields from extension settings
     setTimeout(async function() {
@@ -62,24 +97,7 @@ async function init() {
       } catch(e) {}
     }, 3000);
     
-    // Auto-click "Apply Now" or similar buttons to start the application
-    setTimeout(function() {
-      var allBtns = document.querySelectorAll('button, a');
-      var applyBtn = null;
-      for (var b = 0; b < allBtns.length; b++) {
-        var txt = (allBtns[b].textContent || '').toLowerCase().trim();
-        if (txt === 'apply now' || txt === 'apply' || txt.indexOf('apply now') >= 0) {
-          applyBtn = allBtns[b];
-          break;
-        }
-      }
-      if (applyBtn && applyBtn.offsetHeight > 0) {
-        console.log('JC: Clicking Apply Now...');
-        applyBtn.click();
-      }
-    }, 2000);
-
-    injectFloatingButton();
+injectFloatingButton();
     injectAIAssistButtons();
   // Debug: log detected fields to console
   console.log("%c🔍 Job Copilot loaded", "font-weight:bold;color:#3b82f6");
@@ -104,7 +122,8 @@ function injectFloatingButton() {
 
   btn.onclick = () => {
     panel.classList.toggle('open');
-    if (panel.classList.contains('open')) updatePanel();
+    panelWasOpen = panel.classList.contains('open');
+    if (panelWasOpen) updatePanel();
   };
 
   document.body.appendChild(btn);
@@ -118,8 +137,14 @@ function injectFloatingButton() {
 }
 
 function createPanel() {
-  if (document.getElementById('jc-panel')) 
-    return document.getElementById('jc-panel');
+  const existingPanel = document.getElementById('jc-panel');
+  if (existingPanel) {
+    if (panelWasOpen && !existingPanel.classList.contains('open')) {
+      existingPanel.classList.add('open');
+      updatePanel();
+    }
+    return existingPanel;
+  }
 
   jcPanel = document.createElement('div');
   jcPanel.id = 'jc-panel';
@@ -140,6 +165,7 @@ function createPanel() {
 
   jcPanel.querySelector('#jc-panel-close').onclick = () => {
     jcPanel.classList.remove('open');
+    panelWasOpen = false;
   };
 
   jcPanel.querySelector('#jc-fill-personal').onclick = () => fillPersonal();
@@ -155,6 +181,7 @@ function createPanel() {
 
 function updatePanel() {
   const stats = document.getElementById('jc-stats');
+  if (!stats) return;
   const fields = FormDetector.detect();
   detectedFields = fields;
 
@@ -297,25 +324,6 @@ function extractJobDescription() {
 }
 
 function injectAIAssistButtons() {
-  // Wait a bit for dynamic forms
-  // Re-detect after Apply button click (SPA transition)
-  document.addEventListener('click', function(e) {
-    var t = e.target;
-    if (t.tagName === 'BUTTON' || t.tagName === 'A') {
-      var txt = (t.textContent || '').toLowerCase();
-      if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
-        setTimeout(function() {
-          var fields = FormDetector.detect();
-          var total = fields.personal.length + fields.questions.length;
-          if (total > 0) {
-            injectAIAssistButtons();
-            chrome.runtime.sendMessage({ type: 'jc_fields_detected', count: total }).catch(function() {});
-          }
-        }, 3000);
-      }
-    }
-  });
-  
   setTimeout(function() {
     const fields = FormDetector.detect();
     for (const field of fields.questions) {
@@ -358,24 +366,6 @@ function showStatus(msg, type) {
   if (!el) return;
   el.className = `jc-status ${type}`;
   el.textContent = msg;
-  // Re-detect after Apply button click (SPA transition)
-  document.addEventListener('click', function(e) {
-    var t = e.target;
-    if (t.tagName === 'BUTTON' || t.tagName === 'A') {
-      var txt = (t.textContent || '').toLowerCase();
-      if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
-        setTimeout(function() {
-          var fields = FormDetector.detect();
-          var total = fields.personal.length + fields.questions.length;
-          if (total > 0) {
-            injectAIAssistButtons();
-            chrome.runtime.sendMessage({ type: 'jc_fields_detected', count: total }).catch(function() {});
-          }
-        }, 3000);
-      }
-    }
-  });
-  
   setTimeout(function() { el.textContent = ''; el.className = 'jc-status'; }, 5000);
 }
 
@@ -421,15 +411,28 @@ let detectTimeout = null;
 const observer = new MutationObserver(function() {
   clearTimeout(detectTimeout);
   detectTimeout = setTimeout(function() {
-    // Only re-detect if the JC panel isn't open (avoid interference)
+    const fields = FormDetector.detect();
+    if (isLoginScreen(fields)) {
+      var p = document.getElementById('jc-panel');
+      if (p) updatePanel();
+      return;
+    }
     const panel = document.getElementById('jc-panel');
     if (!panel || !panel.classList.contains('open')) {
-      const fields = FormDetector.detect();
       const total = fields.personal.length + fields.questions.length;
-      if (total > 0 && !document.getElementById('jc-float-btn')) {
-        // Forms appeared but JC button isn't there - re-inject
-        injectFloatingButton();
-        injectAIAssistButtons();
+      if (total > 0) {
+        if (!document.getElementById('jc-float-btn')) {
+          injectFloatingButton();
+          injectAIAssistButtons();
+        } else {
+          var p = document.getElementById('jc-panel');
+          if (p) {
+            updatePanel();
+            if (panelWasOpen && !p.classList.contains('open')) {
+              p.classList.add('open');
+            }
+          }
+        }
       }
     }
   }, 2000);

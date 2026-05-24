@@ -84,6 +84,8 @@ const FormDetector = {
       const field = this.identify(el);
       if (!field) return;
 
+      if (field.name === 'unknown' && !field.isRequired) return;
+
       if (el instanceof HTMLTextAreaElement) {
         // Check if it's a known personal field or custom question
         if (this.isPersonalField(field.name)) {
@@ -96,7 +98,11 @@ const FormDetector = {
       } else if (el.type === 'file') {
         fields.files.push(field);
       } else if (this.personalFieldTypes.includes(el.type) || !el.type) {
-        fields.personal.push(field);
+        if (field.name !== 'unknown') {
+          fields.personal.push(field);
+        } else {
+          fields.unknown.push(field);
+        }
       } else {
         fields.unknown.push(field);
       }
