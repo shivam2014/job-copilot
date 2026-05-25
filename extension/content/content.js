@@ -132,7 +132,9 @@ function injectFloatingButton() {
   document.body.appendChild(btn);
 
   // Close panel on outside click
+  // Close panel on outside click — but NOT during JC fill operations
   document.addEventListener('click', (e) => {
+    if (window.__jcFilling) return;
     if (!btn.contains(e.target) && !panel.contains(e.target)) {
       panel.classList.remove('open');
     }
@@ -171,13 +173,22 @@ function createPanel() {
     jcPanel.classList.remove('open');
     panelWasOpen = false;
   };
-
-  jcPanel.querySelector('#jc-fill-personal').onclick = () => fillPersonal();
-  jcPanel.querySelector('#jc-fill-ai').onclick = () => fillAIQuestions();
-  jcPanel.querySelector('#jc-fill-all').onclick = () => {
-    fillPersonal();
-    fillAIQuestions();
-    fillExtras();
+  jcPanel.querySelector('#jc-fill-personal').onclick = async () => {
+    window.__jcFilling = true;
+    await fillPersonal();
+    window.__jcFilling = false;
+  };
+  jcPanel.querySelector('#jc-fill-ai').onclick = async () => {
+    window.__jcFilling = true;
+    await fillAIQuestions();
+    window.__jcFilling = false;
+  };
+  jcPanel.querySelector('#jc-fill-all').onclick = async () => {
+    window.__jcFilling = true;
+    await fillPersonal();
+    await fillAIQuestions();
+    await fillExtras();
+    window.__jcFilling = false;
   };
   jcPanel.querySelector('#jc-clear-form').onclick = () => clearForm();
 
@@ -215,6 +226,13 @@ async function fillPersonal() {
   const fields = FormDetector.detect();
   const fillMap = await buildFillMap();
   
+  // Check if profile has any data at all
+  const hasProfileData = Object.values(fillMap).some(v => v && typeof v === 'string' && v.trim().length > 0);
+  if (!hasProfileData) {
+    showStatus('No profile data. Open extension settings to upload your resume.', 'error');
+    return;
+  }
+  
   // Apply learned corrections
   const learned = await chrome.storage.sync.get('learned_fields');
   const corrections = learned.learned_fields || {};
@@ -233,9 +251,12 @@ async function fillPersonal() {
   }
   
   if (filledEls.length > 0) listenForCorrections(filledEls);
-  // Also fill learned radio answers
   fillLearnedRadios();
-  showStatus(`Filled ${filled} personal field(s)`, 'success');
+  if (filled > 0) {
+    showStatus(`Filled ${filled} personal field(s)`, 'success');
+  } else if (hasProfileData) {
+    showStatus('Profile data exists but no fields matched. Check your resume data.', 'error');
+  }
 }
 
 async function fillAIQuestions() {

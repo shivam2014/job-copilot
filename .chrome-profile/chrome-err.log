@@ -1,0 +1,16 @@
+[32529:2174513:0525/234812.539907:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[32529:2174513:0525/234812.540036:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[32529:2174513:0525/234812.540066:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[32529:2174513:0525/234837.563057:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[32529:2174513:0525/234929.010843:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[33315:2179840:0525/235107.463259:ERROR:services/on_device_model/ml/gpu_blocklist.cc:118] Unable to get gpu adapter
+[33315:2179851:0525/235107.464176:ERROR:services/on_device_model/ml/gpu_blocklist.cc:118] Unable to get gpu adapter
+[32529:2174513:0525/235107.629456:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[32529:2174519:0525/235357.110391:ERROR:content/browser/devtools/devtools_pipe_handler.cc:188] Connection terminated while reading from pipe
+[34129:2184927:0525/235414.918152:ERROR:chrome/browser/ui/views/user_education/impl/browser_user_education_interface_impl.cc:181] Attempting to show IPH IPH_ExtensionsMenu before browser initialization complete; IPH will not be shown.
+[34129:2185021:0525/235420.146995:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[34129:2185021:0525/235441.028536:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[34129:2185021:0525/235533.068768:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[34129:2185021:0525/235718.697576:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[34129:2185021:0526/000007.383809:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[34129:2185021:0526/000724.695798:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
