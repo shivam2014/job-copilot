@@ -233,7 +233,17 @@ async function fillPersonal() {
   // Check if profile has any data at all
   const hasProfileData = Object.values(fillMap).some(v => v && typeof v === 'string' && v.trim().length > 0);
   if (!hasProfileData) {
-    showStatus('No profile data. Open extension settings to upload your resume.', 'error');
+    showStatus('No profile data — click here to open extension settings.', 'error');
+    // Make status message clickable to open settings page
+    const el = document.getElementById('jc-status-msg');
+    if (el) {
+      el.style.cursor = 'pointer';
+      el.onclick = () => {
+        chrome.runtime.sendMessage({ type: 'jc_open_options' }).catch(() => {});
+        el.onclick = null;
+        el.style.cursor = '';
+      };
+    }
     return;
   }
   
