@@ -190,7 +190,11 @@ function createPanel() {
     await fillExtras();
     window.__jcFilling = false;
   };
-  jcPanel.querySelector('#jc-clear-form').onclick = () => clearForm();
+  jcPanel.querySelector('#jc-clear-form').onclick = () => {
+    window.__jcFilling = true;
+    clearForm();
+    window.__jcFilling = false;
+  };
 
   document.body.appendChild(jcPanel);
   return jcPanel;
