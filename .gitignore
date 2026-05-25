@@ -23,3 +23,11 @@ test/
 
 # Extension backups
 *.bak
+.chrome-profile/
+.chrome-*/
+.t-*/
+.p-*/
+.test-*/
+.pw-*/
+.ext_id
+node_modules/
