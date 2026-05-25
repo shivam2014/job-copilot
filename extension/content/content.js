@@ -67,35 +67,38 @@ async function init() {
       return;
     }
     
-    // Auto-fill personal fields from extension settings
+    // Auto-fill personal fields from extension settings (with learned corrections)
     setTimeout(async function() {
+      if (skipAutoFill) return;
       try {
-        const profile = await chrome.storage.sync.get([
-          'profile_name', 'profile_email', 'profile_phone', 'profile_linkedin',
-          'profile_github', 'profile_website', 'profile_address', 'profile_work_authorization'
-        ]);
         const fields = FormDetector.detect();
-        const fillMap = {
-          name: profile.profile_name,
-          email: profile.profile_email,
-          phone: profile.profile_phone,
-          linkedin: profile.profile_linkedin,
-          github: profile.profile_github,
-          website: profile.profile_website,
-          address: profile.profile_address,
-          work_authorization: profile.profile_work_authorization,
-        };
+        const fillMap = await buildFillMap();
+        const learned = await chrome.storage.sync.get('learned_fields');
+        const corrections = learned.learned_fields || {};
+        
+        // Merge: corrections override profile defaults
+        for (const [key, val] of Object.entries(corrections)) {
+          if (val) fillMap[key] = val;
+        }
+        
         let filled = 0;
+        const filledEls = [];
         for (const field of [...fields.personal, ...fields.selects]) {
           const value = fillMap[field.name];
-          if (value) {
+          if (value && !skipFieldForType(field, value)) {
             const ok = await FormDetector.fillField(field, value);
-            if (ok) filled++;
+            if (ok) { filled++; filledEls.push(field.el); }
           }
         }
-        if (filled > 0) console.log('JC: Auto-filled ' + filled + ' personal field(s)');
+        if (filled > 0) {
+          console.log('JC: Auto-filled ' + filled + ' personal field(s)');
+          listenForCorrections(filledEls);
+        }
       } catch(e) {}
     }, 3000);
+    
+    // Start watching for user form changes (learning)
+    watchFormChanges();
     
 injectFloatingButton();
     injectAIAssistButtons();
@@ -159,6 +162,7 @@ function createPanel() {
       <button class="jc-btn jc-btn-primary" id="jc-fill-personal">Fill Personal Fields</button>
       <button class="jc-btn jc-btn-primary" id="jc-fill-ai">Fill AI Questions</button>
       <button class="jc-btn jc-btn-secondary" id="jc-fill-all">Fill All</button>
+      <button class="jc-btn jc-btn-secondary" id="jc-clear-form" style="margin-top:4px;background:#fef2f2!important;color:#991b1b!important;border:1px solid #fecaca!important">Clear All Fields</button>
       <div id="jc-status-msg"></div>
     </div>
   `;
@@ -173,7 +177,9 @@ function createPanel() {
   jcPanel.querySelector('#jc-fill-all').onclick = () => {
     fillPersonal();
     fillAIQuestions();
+    fillExtras();
   };
+  jcPanel.querySelector('#jc-clear-form').onclick = () => clearForm();
 
   document.body.appendChild(jcPanel);
   return jcPanel;
@@ -206,34 +212,29 @@ function updatePanel() {
 }
 
 async function fillPersonal() {
-  const profile = await chrome.storage.sync.get([
-    'profile_name', 'profile_email', 'profile_phone', 'profile_linkedin',
-    'profile_github', 'profile_website', 'profile_address',
-    'profile_work_authorization',
-  ]);
-
   const fields = FormDetector.detect();
+  const fillMap = await buildFillMap();
+  
+  // Apply learned corrections
+  const learned = await chrome.storage.sync.get('learned_fields');
+  const corrections = learned.learned_fields || {};
+  for (const [key, val] of Object.entries(corrections)) {
+    if (val) fillMap[key] = val;
+  }
+  
   let filled = 0;
-
-  const fillMap = {
-    name: profile.profile_name,
-    email: profile.profile_email,
-    phone: profile.profile_phone,
-    linkedin: profile.profile_linkedin,
-    github: profile.profile_github,
-    website: profile.profile_website,
-    address: profile.profile_address,
-    work_authorization: profile.profile_work_authorization,
-  };
-
+  const filledEls = [];
   for (const field of [...fields.personal, ...fields.selects]) {
     const value = fillMap[field.name];
-    if (value) {
+    if (value && !skipFieldForType(field, value)) {
       const ok = await FormDetector.fillField(field, value);
-      if (ok) filled++;
+      if (ok) { filled++; filledEls.push(field.el); }
     }
   }
-
+  
+  if (filledEls.length > 0) listenForCorrections(filledEls);
+  // Also fill learned radio answers
+  fillLearnedRadios();
   showStatus(`Filled ${filled} personal field(s)`, 'success');
 }
 
@@ -295,6 +296,393 @@ async function fillAIQuestions() {
   }
 
   showStatus(`Filled ${filled}/${questions.length} question(s)`, filled > 0 ? 'success' : 'error');
+}
+
+// --- Shared fill helpers ---
+
+// Build the fill map from profile data, parsing name/address into parts
+async function buildFillMap() {
+  const profile = await chrome.storage.sync.get([
+    'profile_name', 'profile_email', 'profile_phone', 'profile_linkedin',
+    'profile_github', 'profile_website', 'profile_address',
+    'profile_work_authorization',
+  ]);
+
+  // Parse name into components
+  const nameStr = (profile.profile_name || '').trim();
+  const nameParts = nameStr ? nameStr.split(/\s+/) : [];
+  const firstName = nameParts[0] || '';
+  const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+  const middleName = nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '';
+
+  // Parse address — only extract street/city/state/postal if comma-separated with >=3 parts
+  const address = (profile.profile_address || '').trim();
+  const addrParts = address ? address.split(',').map(s => s.trim()).filter(Boolean) : [];
+  const hasMultiPartAddr = addrParts.length >= 3;
+  const parseAddr = hasMultiPartAddr ? addrParts[0] : '';
+  const parseCity = hasMultiPartAddr ? addrParts[addrParts.length - 2] : (addrParts.length === 2 ? addrParts[0] : '');
+  const parseCountry = addrParts.length > 0 ? addrParts[addrParts.length - 1] : '';
+
+  return {
+    name: nameStr,
+    first_name: firstName,
+    last_name: lastName,
+    middle_name: middleName,
+    full_name: nameStr,
+    email: profile.profile_email,
+    phone: profile.profile_phone,
+    linkedin: profile.profile_linkedin,
+    github: profile.profile_github,
+    website: profile.profile_website,
+    // Generic 'address' only set when we CANT split into parts (no separate street/city/country on the form)
+    address: hasMultiPartAddr ? '' : address,
+    street_address: parseAddr,
+    city: parseCity,
+    state: '',
+    postal_code: '',
+    country: parseCountry,
+    work_authorization: profile.profile_work_authorization,
+  };
+}
+
+// Skip filling a field when the value doesn't match the field type
+function skipFieldForType(field, value) {
+  // Don't put non-URL text into url-type fields
+  if (field.el.type === 'url' && !value.startsWith('http')) return true;
+  // Don't put phone-like numbers into URL fields
+  if (field.el.type === 'url' && /^[\d\s\-+()]{6,}$/.test(value)) return true;
+  // Don't put city-like text into street_address (no house number / too short)
+  if (field.name === 'street_address' && !/\d/.test(value)) return true;
+  // Don't put full address into sub-fields (contains comma → not a single sub-value)
+  if (field.name === 'address' && value.includes(',')) return true;
+  // Don't fill postal_code with non-postal data
+  if (field.name === 'postal_code' && (value.length < 3 || /^[a-zA-Z\s]{3,}$/.test(value))) return true;
+  // Don't fill state/region with non-state data
+  if (field.name === 'state' && value.length > 20) return true;
+  return false;
+}
+
+// Learn from user corrections — after JC fills fields, watch for edits
+function listenForCorrections(filledEls) {
+  const seen = new WeakSet();
+  for (const el of filledEls) {
+    if (seen.has(el)) continue;
+    seen.add(el);
+    if (!el || !el.dataset) continue;
+    
+    const fieldName = el.dataset.jcField || el.id || el.name;
+    const filledValue = el.value;
+    
+    // Tag the field so we know JC filled it
+    el.dataset.jcFilled = 'true';
+    el.dataset.jcValue = filledValue;
+    
+    // Listen for blur — user has potentially edited
+    el.addEventListener('blur', function onBlur() {
+      const newValue = el.value.trim();
+      const oldValue = el.dataset.jcValue;
+      
+      // Only save if user actually changed the value (not just clicked in/out)
+      if (newValue && oldValue && newValue !== oldValue) {
+        const fieldLabel = fieldName || 'custom';
+        saveLearnedCorrection(fieldLabel, newValue);
+        console.log('JC: Learned correction for "' + fieldLabel + '": "' + newValue + '"');
+      }
+      
+      // Remove listener — one learning event per field per session
+      el.removeEventListener('blur', onBlur);
+    });
+  }
+}
+
+// Save a learned correction to storage
+async function saveLearnedCorrection(fieldName, value) {
+  try {
+    const result = await chrome.storage.sync.get('learned_fields');
+    const fields = result.learned_fields || {};
+    fields[fieldName] = value;
+    await chrome.storage.sync.set({ learned_fields: fields });
+  } catch(e) {
+    console.error('JC: Failed to save learned correction:', e);
+  }
+}
+
+// Watch ALL form changes — learns from user interactions even on non-JC-filled fields
+// Covers radio buttons, checkboxes, text inputs, selects
+let formWatchInitialized = false;
+function watchFormChanges() {
+  if (formWatchInitialized) return;
+  formWatchInitialized = true;
+  
+  // Debounced listener for change events (radios, checkboxes, selects)
+  document.addEventListener('change', function(e) {
+    const el = e.target;
+    if (!el || !el.closest('form, [class*="apply-flow"], [class*="form"]')) return;
+    
+    // Only save if user changed it (not JC)
+    if (el.dataset.jcFilled === 'true') return;
+    
+    if (el.type === 'radio' && el.checked) {
+      // Save the user's radio selection (question → answer)
+      const name = el.name;
+      if (name) {
+        const label = el.closest('label, .input-row, [class*="field"]');
+        const questionText = label ? (label.textContent || '').trim().slice(0, 60) : '';
+        const answer = (el.value || el.labels?.[0]?.textContent || '').trim();
+        const key = 'radio_' + (questionText || name);
+        saveLearnedCorrection(key, answer);
+        console.log('JC: Learned radio answer "' + key + '" = "' + answer + '"');
+      }
+    }
+    
+    if (el.type === 'checkbox' && el.id !== 'job-alerts-checkbox') {
+      const label = el.labels?.[0]?.textContent?.trim() || el.name || 'checkbox';
+      const key = 'checkbox_' + label.slice(0, 40);
+      saveLearnedCorrection(key, el.checked ? 'yes' : 'no');
+      console.log('JC: Learned checkbox "' + key + '" = ' + el.checked);
+    }
+    
+    if (el.tagName === 'SELECT') {
+      const label = el.labels?.[0]?.textContent?.trim() || el.name || el.id || 'select';
+      const key = 'select_' + label.slice(0, 40);
+      saveLearnedCorrection(key, el.value);
+      console.log('JC: Learned select "' + key + '" = "' + el.value + '"');
+    }
+  }, true);
+  
+  // Text input learning: save on blur if user typed something new
+  document.addEventListener('blur', function(e) {
+    const el = e.target;
+    if (!el || !el.closest('form, [class*="apply-flow"], [class*="form"]')) return;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+    if (el.type === 'hidden' || el.type === 'file' || el.type === 'submit') return;
+    if (el.dataset.jcFilled === 'true') return; // handled by listenForCorrections
+    
+    const val = el.value.trim();
+    if (!val) return;
+    
+    // Get a meaningful key for this field
+    const label = el.labels?.[0]?.textContent?.trim() || el.getAttribute('aria-label') || el.placeholder || el.name || el.id || '';
+    if (!label || label.length < 3) return;
+    
+    const key = 'field_' + label.slice(0, 50).toLowerCase().replace(/\s+/g, '_');
+    saveLearnedCorrection(key, val);
+  }, true);
+}
+
+// Fill radio buttons from learned corrections (application questions)
+async function fillLearnedRadios() {
+  try {
+    const result = await chrome.storage.sync.get('learned_fields');
+    const corrections = result.learned_fields || {};
+    
+    // Find all radio button groups on the page
+    const radios = document.querySelectorAll('input[type="radio"]');
+    const groups = new Map();
+    radios.forEach(r => {
+      if (!r.name) return;
+      if (!groups.has(r.name)) groups.set(r.name, []);
+      groups.get(r.name).push(r);
+    });
+    
+    let filled = 0;
+    for (const [name, group] of groups) {
+      // Find the question text from the page
+      const container = group[0].closest('.input-row, [class*="field"], [class*="question"], label, .apply-flow');
+      const questionText = container ? (container.textContent || '').trim().slice(0, 60) : name;
+      const key = 'radio_' + questionText;
+      
+      const learnedAnswer = corrections[key];
+      if (!learnedAnswer) continue;
+      
+      // Find the matching radio
+      const match = group.find(r => {
+        const label = (r.labels?.[0]?.textContent || r.value || '').trim();
+        return label.toLowerCase().includes(learnedAnswer.toLowerCase());
+      });
+      
+      if (match && !match.checked) {
+        match.checked = true;
+        match.dispatchEvent(new Event('change', { bubbles: true }));
+        match.dataset.jcFilled = 'true';
+        filled++;
+        console.log('JC: Filled radio "' + questionText + '" = "' + learnedAnswer + '"');
+      }
+    }
+    if (filled > 0) console.log('JC: Filled ' + filled + ' radio question(s) from learned answers');
+  } catch(e) {
+    console.error('JC: Error filling radios:', e);
+  }
+}
+
+// Fill extra form elements: Title, Skills, Application Questions, Job alerts
+async function fillExtras() {
+  const fillMap = await buildFillMap();
+  const nameStr = (fillMap.name || '').trim();
+  const firstChar = nameStr ? nameStr.split(' ')[0].charAt(0).toUpperCase() : '';
+  
+  // 1. Select Title (Mr./Ms.) based on name — no strong signal, default to Mr.
+  const titlePills = document.querySelectorAll('.cx-select-pill-section');
+  const titleContainer = document.querySelector('.cx-select-pills-container[aria-label="Title"]');
+  if (titleContainer) {
+    const pills = titleContainer.querySelectorAll('.cx-select-pill-section');
+    for (const pill of pills) {
+      if (pill.textContent.trim() === 'Mr.') {
+        pill.click();
+        console.log('JC: Selected title: Mr.');
+        break;
+      }
+    }
+  }
+  
+  // 2. Match skills from resume against job's preferred skills
+  const skillBtns = document.querySelectorAll('.skill-desired__button');
+  if (skillBtns.length > 0) {
+    // Get resume skills from stored profile data
+    try {
+      const result = await chrome.storage.sync.get('resume_full_data');
+      if (result.resume_full_data) {
+        const data = JSON.parse(result.resume_full_data);
+        const resumeSkills = (data.rawSections?.skills || []).map(s => s.toLowerCase().trim());
+        
+        let matched = 0;
+        for (const btn of skillBtns) {
+          if (btn.offsetHeight === 0 && btn.offsetParent === null) continue;
+          const skillText = btn.textContent.trim().toLowerCase();
+          // Check if any resume skill matches
+          const match = resumeSkills.some(rs => 
+            skillText.includes(rs) || rs.includes(skillText) || 
+            skillText.split(' ').some(word => rs.includes(word) && word.length > 3)
+          );
+          if (match) {
+            btn.click();
+            matched++;
+          }
+        }
+        if (matched > 0) console.log('JC: Matched ' + matched + ' skill(s) from resume');
+      }
+    } catch(e) {}
+  }
+  
+  // 3. Fill application question pills (default: answer "No" to screening questions)
+  const questionPills = document.querySelectorAll('.cx-select-pill-section');
+  const questionContainers = document.querySelectorAll('.cx-select-pills-container');
+  for (const container of questionContainers) {
+    const ariaLabel = container.getAttribute('aria-label') || '';
+    if (!ariaLabel || ariaLabel === 'Title') continue; // skip title
+    
+    const pills = container.querySelectorAll('.cx-select-pill-section');
+    for (const pill of pills) {
+      const text = pill.textContent.trim();
+      
+      // Check for learned answers first
+      // Default: answer "No" to screening questions, "Yes" to job alerts
+      if (text === 'No') {
+        pill.click();
+        console.log('JC: Answered "' + ariaLabel.slice(0, 30) + '" → No');
+        break;
+      }
+    }
+  }
+  
+  // 4. Job alerts checkbox — leave unchecked unless previously learned
+}
+
+// Clear all form fields on the page
+function clearForm() {
+  if (!confirm('Clear all fields on this form? This cannot be undone.')) return;
+  
+  let cleared = 0;
+  
+  // 1. Click all "Remove value" buttons (combo fields)
+  const removeBtns = document.querySelectorAll('button[title*="Remove value"]');
+  for (const btn of removeBtns) {
+    if (btn.offsetHeight > 0 || btn.offsetParent !== null) {
+      try { btn.click(); cleared++; } catch(e) {}
+    }
+  }
+  
+  // 2. Click all "Delete" buttons on profile tiles (experience, education, skills, languages)
+  const deleteBtns = document.querySelectorAll('button[title="Delete"], button[aria-label="Delete"]');
+  for (const btn of deleteBtns) {
+    try { btn.click(); cleared++; } catch(e) {}
+  }
+  
+  // 3. Clear all text inputs and comboboxes  
+  const inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="file"]), textarea, select, [role="combobox"]');
+  for (const el of inputs) {
+    if (el.hasAttribute('readonly')) el.removeAttribute('readonly');
+    el.classList.remove('input-row__control--locked');
+    
+    if (el.type === 'radio' || el.type === 'checkbox') {
+      if (el.checked) {
+        el.checked = false;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        cleared++;
+      }
+    } else if (el.tagName === 'SELECT') {
+      el.selectedIndex = 0;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      cleared++;
+    } else if (el.value) {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(el, '');
+      el.value = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      cleared++;
+    }
+    
+    delete el.dataset.jcFilled;
+    delete el.dataset.jcValue;
+  }
+  
+  // 4. Clear Oracle custom pill selects (skills, languages, title, questions)
+  const pills = document.querySelectorAll('.cx-select-pill-section');
+  for (const pill of pills) {
+    if (pill.offsetHeight > 0 && pill.offsetParent !== null) {
+      try { pill.click(); cleared++; } catch(e) {}
+    }
+  }
+  
+  // 5. Clear Oracle custom combobox dropdown text
+  const comboInputs = document.querySelectorAll('.cx-select-input');
+  for (const el of comboInputs) {
+    if (el.offsetHeight > 0 && el.offsetParent !== null) {
+      el.value = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      cleared++;
+    }
+  }
+  
+  // 6. Remove Oracle profile-imported items (experience, education cards — find any remaining)
+  const profileItems = document.querySelectorAll('.apply-flow-profile-item-tile');
+  for (const item of profileItems) {
+    const allBtns = item.querySelectorAll('button');
+    for (const btn of allBtns) {
+      const title = (btn.getAttribute('title') || '').toLowerCase();
+      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+      if (title === 'delete' || aria === 'delete') {
+        try { btn.click(); cleared++; } catch(e) {}
+      }
+    }
+  }
+  
+  // 7. Clear the job alerts checkbox
+  const alertCb = document.getElementById('job-alerts-checkbox');
+  if (alertCb && alertCb.checked) {
+    alertCb.checked = false;
+    alertCb.dispatchEvent(new Event('change', { bubbles: true }));
+    cleared++;
+  }
+  
+  showStatus('Cleared ' + cleared + ' field(s)', 'info');
+  console.log('JC: Cleared ' + cleared + ' form field(s)');
+  
+  // Prevent auto-fill from re-filling fields for 3 seconds after clear
+  skipAutoFill = true;
+  setTimeout(() => { skipAutoFill = false; }, 3000);
 }
 
 function extractJobDescription() {
@@ -408,6 +796,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // Re-detect forms when DOM changes (SPA support)
 let detectTimeout = null;
+let autoFillAttempted = false;
+let skipAutoFill = false;  // Set true by clearForm() to prevent re-fill after clearing
 const observer = new MutationObserver(function() {
   clearTimeout(detectTimeout);
   detectTimeout = setTimeout(function() {
@@ -421,6 +811,8 @@ const observer = new MutationObserver(function() {
     if (!panel || !panel.classList.contains('open')) {
       const total = fields.personal.length + fields.questions.length;
       if (total > 0) {
+        // Watch for user changes (learning) — safe to call repeatedly, only activates once
+        watchFormChanges();
         if (!document.getElementById('jc-float-btn')) {
           injectFloatingButton();
           injectAIAssistButtons();
@@ -433,11 +825,79 @@ const observer = new MutationObserver(function() {
             }
           }
         }
+        // Skip auto-fill if user just cleared the form
+        if (skipAutoFill) return;
+        
+        // Auto-fill on SPA transitions: detect new form sections and fill them
+        if (autoFillAttempted) {
+          // Second+ SPA section: re-fill personal fields on new fields only
+          runSpaReFill(fields);
+        } else {
+          // First time: run full auto-fill
+          autoFillAttempted = true;
+          setTimeout(async function() {
+            // Skip if clear happened while timeout was pending
+            if (skipAutoFill) return;
+            try {
+              const currentFields = FormDetector.detect();
+              if (currentFields.personal.length > 0 || currentFields.selects.length > 0) {
+                const fillMap = await buildFillMap();
+                const learned = await chrome.storage.sync.get('learned_fields');
+                const corrections = learned.learned_fields || {};
+                for (const [key, val] of Object.entries(corrections)) {
+                  if (val) fillMap[key] = val;
+                }
+                let filled = 0;
+                const filledEls = [];
+                for (const field of [...currentFields.personal, ...currentFields.selects]) {
+                  const value = fillMap[field.name];
+                  if (value && !skipFieldForType(field, value)) {
+                    const ok = await FormDetector.fillField(field, value);
+                    if (ok) { filled++; filledEls.push(field.el); }
+                  }
+                }
+                if (filled > 0) {
+                  console.log('JC: Auto-filled ' + filled + ' field(s) after SPA transition');
+                  listenForCorrections(filledEls);
+                }
+                // Also fill learned radio answers
+                fillLearnedRadios();
+              }
+            } catch(e) { console.error('JC: SPA auto-fill error', e); }
+          }, 1500);
+        }
       }
     }
   }, 2000);
 });
 observer.observe(document.body, { childList: true, subtree: true });
+
+// SPA re-fill — only fills fields that are currently empty (second+ sections)
+async function runSpaReFill(fields) {
+  try {
+    const fillMap = await buildFillMap();
+    const learned = await chrome.storage.sync.get('learned_fields');
+    const corrections = learned.learned_fields || {};
+    for (const [key, val] of Object.entries(corrections)) {
+      if (val) fillMap[key] = val;
+    }
+    let filled = 0;
+    const filledEls = [];
+    for (const field of [...fields.personal, ...fields.selects]) {
+      // Only fill empty fields on SPA re-fill
+      if (field.el.value) continue;
+      const value = fillMap[field.name];
+      if (value && !skipFieldForType(field, value)) {
+        const ok = await FormDetector.fillField(field, value);
+        if (ok) { filled++; filledEls.push(field.el); }
+      }
+    }
+    if (filled > 0) {
+      console.log('JC: SPA re-filled ' + filled + ' field(s)');
+      listenForCorrections(filledEls);
+    }
+  } catch(e) { console.error('JC: SPA re-fill error', e); }
+}
 
 // Start
 init();
