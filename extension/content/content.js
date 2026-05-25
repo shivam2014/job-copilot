@@ -790,14 +790,14 @@ function makeStatusClickable() {
   const el = document.getElementById('jc-status-msg');
   if (!el) return;
   el.style.cursor = 'pointer';
+  el.style.color = '#2563eb';
   el.style.textDecoration = 'underline';
-  el.style.textDecorationColor = '#93c5fd';
-  el.style.textUnderlineOffset = '2px';
   el.title = 'Click to open extension settings';
   el.onclick = () => {
     chrome.runtime.sendMessage({ type: 'jc_open_options' }).catch(() => {});
     el.onclick = null;
     el.style.cursor = '';
+    el.style.color = '';
     el.style.textDecoration = '';
     el.title = '';
   };
