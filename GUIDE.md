@@ -33,7 +33,7 @@ job-copilot/
 
 ## 2. Launch Chrome
 
-### Method A: Quick launch (recommended for testing)
+### Method A: Quick launch (recommended)
 
 ```bash
 cd /Users/shivam94/job-copilot
@@ -41,40 +41,37 @@ bash scripts/dev_launch.sh
 ```
 
 Launches Chrome for Testing with:
-- **JC extension** loaded from `extension/` folder
+- **JC extension** loaded via `--remote-debugging-pipe` + `Extensions.loadUnpacked` CDP
 - **Persistent profile** at `.chrome-profile/` (keeps storage, cookies, Bitwarden)
-- **CDP port 9222** (for remote debugging)
+- **CDP bridge on port 9222** (WebSocket bridge for cdp tool)
+- Requires `chrome://inspect/#remote-debugging` toggle ON
 
-### Method B: Manual launch
+> **Note:** Chrome 137+ removed `--load-extension`. This replacement uses the official CDP `Extensions.loadUnpacked` command. Open-source Chromium still supports `--load-extension`.
+
+### Method B: Manual launch (not recommended on Chrome 148)
+
+`--load-extension` was removed from branded Chrome builds. Only works on open-source Chromium.
+
+### Method C: For live co-debugging (I connect via cdp tool)
+
+The chrome-cdp-skill (`cdp.mjs`) connects to Chrome via raw WebSocket CDP:
 
 ```bash
-CHROME_FT="$HOME/Library/Caches/ms-playwright/chromium-1223/chrome-mac-arm64/Google\ Chrome for Testing.app/Contents/MacOS/Google\ Chrome for Testing"
-open -n -a "$CHROME_FT" --args \
-  --user-data-dir=".chrome-profile" \
-  --load-extension="extension" \
-  --remote-debugging-port=9222 \
-  '--remote-allow-origins=*' \
-  --no-first-run \
-  --new-window "about:blank"
+# List open pages (target is unique prefix from list output)
+scripts/cdp.mjs list
+
+# Interact with a page
+scripts/cdp.mjs eval <target> "document.title"
+scripts/cdp.mjs click <target> ".apply-now-button"
+scripts/cdp.mjs type <target> "text"
+scripts/cdp.mjs nav <target> "https://..."
 ```
 
-### Method C: For live co-debugging (I connect to your Chrome)
+**Prerequisite:** `chrome://inspect/#remote-debugging` toggle ON. Chrome must be running with CDP enabled.
 
-You just use Chrome normally. I connect via codex-chrome plugin:
+**Install:** `pi install git:github.com/pasky/chrome-cdp-skill@v1.0.2`
 
-```js
-const browser = await agent.browsers.get("extension");
-const tabs = await browser.user.openTabs();
-const oracleTab = tabs.find(t => t.url?.includes('oraclecloud.com'));
-const tab = await browser.user.claimTab(oracleTab);
-// Now I can evaluate, inspect, debug
-```
-
-**Prerequisite:** codex-chrome native host must be installed:
-```bash
-cd /Users/shivam94/.codex/plugins/cache/chrome-local/codex-chrome/latest
-node -e "import('./scripts/installManifest.mjs').then(m => m.install())"
-```
+> Old codex-chrome plugin approach is superseded by the cdp tool.
 
 ---
 
@@ -202,6 +199,33 @@ node scripts/reload_extension.mjs
 ```
 
 Or manually: `chrome://extensions` → find Job Copilot → click refresh icon.
+
+
+### Launch Chrome with extension (Chrome 148+)
+
+`--load-extension` removed. Use pipe CDP bridge:
+
+```bash
+bash scripts/dev_launch.sh
+```
+
+Requires `chrome://inspect/#remote-debugging` toggle ON.
+
+### cdp.mjs — CDP interaction tool
+
+```bash
+# Install
+pi install git:github.com/pasky/chrome-cdp-skill@v1.0.2
+
+# Commands
+scripts/cdp.mjs list                    # list pages
+scripts/cdp.mjs eval <tgt> "expr"       # run JS
+scripts/cdp.mjs click <tgt> "selector"  # click element
+scripts/cdp.mjs type <tgt> "text"       # type text
+scripts/cdp.mjs nav <tgt> "url"         # navigate
+scripts/cdp.mjs html <tgt> [sel]        # get HTML
+scripts/cdp.mjs snap <tgt>              # accessibility tree
+```
 
 ### Syntax check after edits
 

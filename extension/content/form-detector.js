@@ -4,10 +4,25 @@ const FormDetector = {
   // Map common field patterns to profile fields
   fieldPatterns: {
     name: [
-      'name', 'fullname', 'full-name', 'full_name',
+      'name',
       'applicant.name', 'candidate.name',
-      'firstname', 'first-name', 'first_name',
-      'lastname', 'last-name', 'last_name',
+    ],
+    first_name: [
+      'firstname', 'first-name', 'first_name', 'first name',
+      'given-name', 'given name', 'givenname',
+    ],
+    last_name: [
+      'lastname', 'last-name', 'last_name', 'last name',
+      'family-name', 'family name', 'familyname',
+      'surname',
+    ],
+    middle_name: [
+      'middlename', 'middle-name', 'middle_name', 'middle name',
+      'middlenames',
+      'additional-name', 'middle initial',
+    ],
+    full_name: [
+      'fullname', 'full-name', 'full_name', 'full name',
     ],
     email: [
       'email', 'e-mail', 'emailaddress', 'email_address',
@@ -17,6 +32,12 @@ const FormDetector = {
       'phone', 'telephone', 'tel', 'phonenumber', 'phone-number', 'phone_number', 'phone number',
       'mobile', 'cell',
       'applicant.phone', 'candidate.phone',
+    ],
+    phone_country_code: [
+      'phonecountrycode', 'phone-country-code', 'phone_country_code',
+      'countrycode', 'country-code', 'country_code',
+      'phonecc', 'phone-cc',
+      'phone_country',
     ],
     linkedin: [
       'linkedin', 'linkedinurl', 'linkedin-url', 'linkedin_url',
@@ -30,10 +51,22 @@ const FormDetector = {
       'website', 'portfolio', 'personalwebsite', 'personal_website',
       'url', 'webpage',
     ],
-    address: [
-      'address', 'street', 'streetaddress', 'street_address',
-      'location', 'city', 'state', 'zip', 'postal', 'postalcode', 'postal code',
+    address: ['address'],
+    street_address: [
+      'street', 'streetaddress', 'street_address', 'street address',
+      'address-line1',
     ],
+    city: [
+      'city', 'town', 'address-level2',
+    ],
+    state: [
+      'state', 'province', 'region', 'address-level1',
+    ],
+    postal_code: [
+      'postal', 'postalcode', 'postal-code', 'postal code',
+      'zip', 'zipcode', 'zip-code', 'zip code',
+    ],
+    country: ['country', 'nation'],
     resume: [
       'resume', 'cv', 'upload-cv', 'uploadcv', 'upload_cv',
       'file', 'attachment', 'document',
@@ -129,12 +162,28 @@ const FormDetector = {
       if (labelEl) labelText = labelEl.textContent.toLowerCase().trim();
     }
 
-    // Try finding parent with label
+    // Try finding parent with label — includes Oracle/Workday ATS CSS patterns
     if (!labelText) {
-      const parent = el.closest('.field, .form-group, .question, [class*="field"], [class*="form-"]');
+      const parent = el.closest('.field, .form-group, .question, [class*="field"], [class*="form-"], .input-row, [class*="oj-"], [class*="apply-flow"], [class*="form-row"], [class*="ats-field"]');
       if (parent) {
-        const labelEl = parent.querySelector('label, .label, [class*="label"]');
+        const labelEl = parent.querySelector('label, .label, [class*="label"], [class*="oj-label"]');
         if (labelEl) labelText = labelEl.textContent.toLowerCase().trim();
+      }
+    }
+
+    // Additional fallback: look for any preceding span/div with label-like text
+    if (!labelText) {
+      // Walk up siblings to find a label-like element
+      let prev = el.previousElementSibling;
+      let tries = 0;
+      while (prev && tries < 3) {
+        const t = (prev.textContent || '').trim();
+        if (t && !t.includes('\n') && t.length < 120 && !prev.querySelector('input, textarea, select')) {
+          labelText = t.toLowerCase();
+          break;
+        }
+        prev = prev.previousElementSibling;
+        tries++;
       }
     }
 
@@ -143,12 +192,60 @@ const FormDetector = {
       .filter(Boolean)
       .join(' ');
 
-    // Classify
+    // Classify — weighted scoring by source, then pattern length
+    // Sources: labelText + autocomplete get higher weight than name/id
     let fieldName = 'unknown';
+    let bestScore = 0;
+    const namePartKeys = ['first_name', 'last_name', 'middle_name', 'full_name'];
+    
+    // Score helper: check a single source string against a pattern
+    function scoreMatch(src, pattern, srcWeight) {
+      const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordPattern = new RegExp('\\b' + escaped + '\\b', 'i');
+      if (wordPattern.test(src)) {
+        return srcWeight * 100 + pattern.length;
+      }
+      return 0;
+    }
+    
+    // Pre-scan: does any name-part pattern match on labelText or autocomplete?
+    let hasSpecificNamePart = false;
     for (const [profileKey, patterns] of Object.entries(this.fieldPatterns)) {
-      if (patterns.some(p => identifiers.includes(p))) {
-        fieldName = profileKey;
-        break;
+      if (!namePartKeys.includes(profileKey)) continue;
+      for (const p of patterns) {
+        const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const wordPattern = new RegExp('\\b' + escaped + '\\b', 'i');
+        const srcs = [labelText, autocomplete, ariaLabel].filter(Boolean);
+        if (srcs.some(s => wordPattern.test(s))) {
+          hasSpecificNamePart = true;
+          break;
+        }
+      }
+      if (hasSpecificNamePart) break;
+    }
+    
+    for (const [profileKey, patterns] of Object.entries(this.fieldPatterns)) {
+      for (const p of patterns) {
+        // Check each source separately with different weights
+        // Label text (weight 4) and autocomplete (weight 3) are most reliable
+        // ariaLabel (weight 2), name (weight 1), id (weight 1)
+        let totalScore = 0;
+        totalScore += scoreMatch(labelText, p, 4);
+        totalScore += scoreMatch(autocomplete, p, 3);
+        totalScore += scoreMatch(ariaLabel, p, 2);
+        totalScore += scoreMatch(name, p, 1);
+        totalScore += scoreMatch(id, p, 1);
+        totalScore += scoreMatch(placeholder, p, 1);
+        
+        // Penalize generic 'name' if a more specific name part also matches
+        if (profileKey === 'name' && hasSpecificNamePart) {
+          totalScore = 0; // generic 'name' yields to specific name parts
+        }
+        
+        if (totalScore > bestScore) {
+          fieldName = profileKey;
+          bestScore = totalScore;
+        }
       }
     }
 
@@ -163,8 +260,11 @@ const FormDetector = {
   },
 
   isPersonalField(name) {
-    return ['name', 'email', 'phone', 'linkedin', 'github', 'website',
-            'address', 'resume', 'cover_letter', 'work_authorization',
+    return ['name', 'first_name', 'last_name', 'middle_name', 'full_name',
+            'email', 'phone',
+            'linkedin', 'github', 'website',
+            'address', 'street_address', 'city', 'state', 'postal_code', 'country',
+            'resume', 'cover_letter', 'work_authorization',
             'gender', 'veteran', 'disability', 'race', 'hispanic'].includes(name);
   },
 
@@ -176,12 +276,41 @@ const FormDetector = {
     el.focus();
     
     if (el instanceof HTMLSelectElement) {
-      const option = Array.from(el.options).find(o =>
-        o.text.toLowerCase().includes(value.toLowerCase()) ||
-        o.value.toLowerCase().includes(value.toLowerCase())
+      // Priority matching: exact > startsWith > word-boundary > includes
+      const options = Array.from(el.options).filter(o => o.value !== '');
+      const lowerValue = value.toLowerCase().trim();
+      
+      // Phase 1: exact match
+      let match = options.find(o => 
+        o.text.toLowerCase().trim() === lowerValue ||
+        o.value.toLowerCase().trim() === lowerValue
       );
-      if (option) {
-        el.value = option.value;
+      
+      // Phase 2: starts with
+      if (!match) {
+        match = options.find(o =>
+          o.text.toLowerCase().trim().startsWith(lowerValue) ||
+          o.value.toLowerCase().trim().startsWith(lowerValue) ||
+          lowerValue.startsWith(o.text.toLowerCase().trim())
+        );
+      }
+      
+      // Phase 3: word-boundary (match as whole word within option text)
+      if (!match) {
+        const wordRegex = new RegExp('\\b' + lowerValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+        match = options.find(o => wordRegex.test(o.text) || wordRegex.test(o.value));
+      }
+      
+      // Phase 4: includes (original fallback)
+      if (!match) {
+        match = options.find(o =>
+          o.text.toLowerCase().includes(lowerValue) ||
+          o.value.toLowerCase().includes(lowerValue)
+        );
+      }
+      
+      if (match) {
+        el.value = match.value;
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
       }
@@ -191,6 +320,11 @@ const FormDetector = {
     if (el.type === 'file') {
       // Can't programmatically set file inputs for security reasons
       return false;
+    }
+
+    // Oracle custom combobox: can't set value directly, must open dropdown and select option
+    if (this.isOracleCombobox(el)) {
+      return await this.fillOracleCombobox(el, value);
     }
 
     // For text inputs and textareas
@@ -265,4 +399,80 @@ FormDetector.debugLog = function() {
   console.log(`File uploads: ${fields.files.length}`);
   console.log('======================================');
   return fields;
+};
+
+FormDetector.isOracleCombobox = function(el) {
+  return el.getAttribute('role') === 'combobox' || !!el.closest('.cx-select');
+};
+
+FormDetector.fillOracleCombobox = async function(el, value) {
+  // Click to open the dropdown
+  el.focus();
+  el.click();
+  
+  // Wait for dropdown to appear
+  await new Promise(resolve => setTimeout(resolve, 300));
+  
+  // Oracle combobox options are rendered in a position-fixed overlay or dropdown container
+  // Try multiple selectors to find the options
+  const valueLower = value.toLowerCase().trim();
+  const selectors = [
+      `.cx-select-option[data-value="${value}"]`,
+      `.cx-select-option`,
+      `[role="option"]`,
+      `.oj-select-choice`,
+    ];
+    
+    let options = [];
+    for (const sel of selectors) {
+      const found = document.querySelectorAll(sel);
+      if (found.length > 0) {
+        options = Array.from(found);
+        break;
+      }
+    }
+    
+    if (options.length === 0) {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return false;
+    }
+    
+    // Priority matching: exact > startsWith > includes
+    let match = options.find(o =>
+      o.textContent.trim().toLowerCase() === valueLower ||
+      o.getAttribute('data-value')?.toLowerCase() === valueLower
+    );
+    
+    if (!match) {
+      match = options.find(o =>
+        o.textContent.trim().toLowerCase().startsWith(valueLower) ||
+        valueLower.startsWith(o.textContent.trim().toLowerCase())
+      );
+    }
+    
+    if (!match) {
+      match = options.find(o =>
+        o.textContent.trim().toLowerCase().includes(valueLower)
+      );
+    }
+    
+    if (match) {
+      match.click();
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      return true;
+    }
+    
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    return false;
+  };
+
+FormDetector.isPersonalField = function(name) {
+  return ['name', 'first_name', 'last_name', 'middle_name', 'full_name',
+          'email', 'phone', 'phone_country_code',
+          'linkedin', 'github', 'website',
+          'address', 'street_address', 'city', 'state', 'postal_code', 'country',
+          'resume', 'cover_letter', 'work_authorization',
+          'gender', 'veteran', 'disability', 'race', 'hispanic'].includes(name);
 };

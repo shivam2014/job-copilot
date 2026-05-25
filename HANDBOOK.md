@@ -128,6 +128,21 @@ Chrome extension (MV3) that auto-fills job application forms using your resume d
 - Syntax check passed: `node -c extension/content/content.js`
 - **Known:** Country combobox still rejects value (jcFilled=true, jcValue=Poland, but actual value is empty). Phone splitting not yet implemented.
 
+### 2026-05-25 (session 3): Chrome 148 killed --load-extension — built CDP pipe bridge
+**Focus:** Chrome 148 broke extension loading. Built replacement pipeline using --remote-debugging-pipe.
+**Done:**
+- Root cause: Chrome 137+ removed `--load-extension` from all branded builds
+- Built `scripts/launch_with_ext.mjs` — launches Chrome via `--remote-debugging-pipe`, loads extension via `Extensions.loadUnpacked` CDP command, runs WebSocket bridge on port 9222
+- Wrote `fillOracleCombobox()` + `isOracleCombobox()` in form-detector.js (click-to-open-dropdown for Oracle combobox)
+- Added `phone_country_code` field patterns to form-detector.js
+- Fixed syntax error in form-detector.js (methods placed outside FormDetector object)
+- All 4 JS files pass `node -c`
+- Adopted chrome-cdp-skill (`pi install git:github.com/pasky/chrome-cdp-skill@v1.0.2`) for CDP interaction
+- Learned: `Extensions.loadUnpacked` requires `--remote-debugging-pipe` (not port). Browser tool can't connect to pipe.
+- Bridge crash fixes: global error handlers, proper pipe listener cleanup, no listener accumulation.
+- Tested on Oracle: reached `/apply/email` page, filled email via CDP eval.
+**New files:** `scripts/launch_with_ext.mjs`, updated `scripts/dev_launch.sh`
+
 ---
 
 ## Known Issues (Detailed)
@@ -148,8 +163,24 @@ Chrome extension (MV3) that auto-fills job application forms using your resume d
 - In `buildFillMap()`, add `phone_country_code` (extract before `-`) and `phone_number` (extract after `-`)
 - In `fillPersonal()`, detect fields named `phone_country_code` or labeled "country code" and fill with split value
 
-### 3. Extension not loaded
-**Fix:** Open `chrome://extensions` → Enable Developer mode → Load unpacked → select `extension/` folder. Or run `node scripts/reload_extension.mjs`.
+### 3. Chrome 148 killed --load-extension
+**Symptom:** `bash scripts/dev_launch.sh` starts Chrome but extension never loads.
+**Root cause:** Chrome 137+ removed `--load-extension` from all branded builds. We're on Chrome 148.
+**Replacement:** `--remote-debugging-pipe` + `Extensions.loadUnpacked` CDP command via `scripts/launch_with_ext.mjs`.
+**Setup:** The script launches Chrome in pipe mode, loads JC via CDP, runs a WebSocket bridge on 9222.
+**Prerequisite:** `chrome://inspect/#remote-debugging` toggle must be ON.
+**DevToolsActivePort:** Must point to the bridge. File: `~/Library/Application Support/Google/Chrome/DevToolsActivePort`. Format: `9222\n/devtools/browser`.
+**Bridge crash prevention:** Global error handlers + remove pipe listeners on WS close.
+
+### 4. chrome-cdp-skill (CDP interaction tool)
+**Install:** `pi install git:github.com/pasky/chrome-cdp-skill@v1.0.2`
+**Prereq:** `chrome://inspect/#remote-debugging` toggle ON
+**Commands:** `scripts/cdp.mjs list / eval / click / type / nav / html / snap / shot / clickxy <target>`
+**Target:** Unique prefix from `list` output (e.g. `24A88FBB`).
+**How:** Raw WebSocket CDP, no Puppeteer. Persistent daemon per tab.
+**Bridge compat:** Works when DevToolsActivePort is synced to bridge.
+
+### 5. Nyro endpoint
 
 ### 4. Nyro endpoint
 Check if Nyro is running: `curl http://localhost:19530/v1/models`

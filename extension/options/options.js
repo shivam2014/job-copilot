@@ -372,6 +372,50 @@ function showMsg(text, type) {
   setTimeout(() => { el.textContent = ''; el.className = 'save-msg'; }, 4000);
 }
 
+// --- Learned Corrections ---
+function renderLearnedCorrections() {
+  const container = document.getElementById('learned-corrections-list');
+  if (!container) return;
+  chrome.storage.sync.get('learned_fields', (result) => {
+    const corrections = result.learned_fields || {};
+    const entries = Object.entries(corrections);
+    if (entries.length === 0) {
+      container.innerHTML = '<p class="empty-state">No corrections learned yet. Fill a form and edit a field — JC will remember your preference.</p>';
+      return;
+    }
+    container.innerHTML = entries.map(([key, val], i) => `
+      <div class="saved-qa">
+        <div class="qa-question"><strong>Field:</strong> ${escHtml(key)}</div>
+        <div class="qa-answer"><strong>Value:</strong> ${escHtml(val)}</div>
+        <button class="qa-delete correction-delete" data-key="${escHtml(key)}">✕</button>
+      </div>
+    `).join('');
+  });
+}
+
+// Delete a single correction
+function deleteCorrection(key) {
+  chrome.storage.sync.get('learned_fields', (result) => {
+    const corrections = result.learned_fields || {};
+    delete corrections[key];
+    chrome.storage.sync.set({ learned_fields: corrections }, renderLearnedCorrections);
+  });
+}
+
+// Clear all corrections
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('correction-delete')) {
+    deleteCorrection(e.target.dataset.key);
+  }
+});
+document.getElementById('clear-corrections-btn')?.addEventListener('click', () => {
+  if (confirm('Clear all learned corrections?')) {
+    chrome.storage.sync.set({ learned_fields: {} }, renderLearnedCorrections);
+  }
+});
+// Call renderLearnedCorrections on page load
+setTimeout(renderLearnedCorrections, 800);
+
 // --- Test connection (checks if model + endpoint work) ---
 async function testConnection() {
   const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, '');
