@@ -234,16 +234,7 @@ async function fillPersonal() {
   const hasProfileData = Object.values(fillMap).some(v => v && typeof v === 'string' && v.trim().length > 0);
   if (!hasProfileData) {
     showStatus('No profile data — click here to open extension settings.', 'error');
-    // Make status message clickable to open settings page
-    const el = document.getElementById('jc-status-msg');
-    if (el) {
-      el.style.cursor = 'pointer';
-      el.onclick = () => {
-        chrome.runtime.sendMessage({ type: 'jc_open_options' }).catch(() => {});
-        el.onclick = null;
-        el.style.cursor = '';
-      };
-    }
+    makeStatusClickable();
     return;
   }
   
@@ -280,7 +271,8 @@ async function fillAIQuestions() {
   ]);
 
   if (!profile.resume_text) {
-    showStatus('No resume uploaded. Go to extension settings.', 'error');
+    showStatus('No resume uploaded — click here to open extension settings.', 'error');
+    makeStatusClickable();
     return;
   }
 
@@ -757,7 +749,8 @@ function injectAIAssistButtons() {
           'llm_base_url', 'llm_api_key', 'llm_model', 'resume_text',
         ]);
         if (!profile.resume_text) {
-          showStatus('No resume uploaded. Go to extension settings.', 'error');
+          showStatus('No resume uploaded — click here to open extension settings.', 'error');
+          makeStatusClickable();
           return;
         }
 
@@ -790,6 +783,18 @@ function showStatus(msg, type) {
   el.className = `jc-status ${type}`;
   el.textContent = msg;
   setTimeout(function() { el.textContent = ''; el.className = 'jc-status'; }, 5000);
+}
+
+// Make the status message clickable to open extension settings
+function makeStatusClickable() {
+  const el = document.getElementById('jc-status-msg');
+  if (!el) return;
+  el.style.cursor = 'pointer';
+  el.onclick = () => {
+    chrome.runtime.sendMessage({ type: 'jc_open_options' }).catch(() => {});
+    el.onclick = null;
+    el.style.cursor = '';
+  };
 }
 
 // --- Saved Answers Bank ---
