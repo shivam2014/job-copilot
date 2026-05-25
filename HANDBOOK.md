@@ -1,232 +1,64 @@
-# Job Copilot — Project Handbook
+# Handbook — Job Copilot
 
-> Living document: current state, session history, known issues, roadmap.
-> Update after every session.
+> Current state, known blockers, and what comes next.
 > Last updated: 2026-05-25
 
----
+## Core Loop
 
-## What Is Job Copilot
+Chrome extension (MV3) that auto-fills job application forms from resume data + an LLM endpoint you bring. Upload resume → JC extracts profile → fills forms → learns from corrections.
 
-Chrome extension (MV3) that auto-fills job application forms using your resume data + an LLM endpoint you bring. Works on Oracle Cloud, Workday, Greenhouse, Lever, iCIMS, etc.
+## Current Status
 
-**Core loop:**
-1. Upload resume → LLM extracts profile (name, email, phone, skills, experience, etc.)
-2. Go to job page → JC detects form fields → fills from profile
-3. For custom questions → AI generates answers from resume + job description
-4. Learns from your corrections → saves for next time
+### Known Blockers (next session)
 
----
-
-## Current State
+| Issue | Why It's Stuck |
+|-------|----------------|
+| **Oracle `firstName`/`lastName` not filled** | `fillPersonal()` detects 8 personal fields, fills `fullName` and phone, but `firstName`/`lastName`/`email` stay empty. Likely `identify()` mapping or `fillMap` mismatch — needs isolated-world debugging. |
+| **Knockout forms resist CDP** | Oracle uses Knockout.js observables. Setting `el.value` or `el.checked` doesn't update observables. "Next" and "Verify" buttons throw "Uncaught". User has to click these manually. |
+| **`fillOracleCombobox()` untested** | Code written (click-to-open-dropdown) but never tested on live Oracle combobox because we couldn't get past the Knockout email form. |
+| **Phone splitting not implemented** | `phone_country_code` patterns added to `form-detector.js` but `buildFillMap()` doesn't split `+33-753788537` yet. |
+| **Bridge crashes under load** | `scripts/launch_with_ext.mjs` pipe bridge is fragile — Oracle SPA console flood kills it (`Runtime.enable` times out). Workaround: create new tab with console suppression + navigate. |
 
 ### What Works
+- Extension loads via `--remote-debugging-pipe` + `Extensions.loadUnpacked`
+- JC button appears on Oracle form, Fill All fills `fullName`, phone, skills
+- Panel doesn't minimize during fill/clear (fixed)
+- Error messages clickable (opens settings)
+- `cdp.mjs` works for non-SPA pages
 
-| Feature | Status |
-|---------|--------|
-| Resume PDF upload → LLM extraction | ✅ |
-| Profile fields (name, email, phone, etc.) auto-fill | ✅ |
-| AI-generated answers for custom questions | ✅ |
-| Saved Q&A bank (reuse across applications) | ✅ |
-| Floating JC button + panel | ✅ |
-| SPA form re-detection (MutationObserver) | ✅ |
-| Login screen detection (skip auto-fill on login-only pages) | ✅ |
-| Learning system (saves user corrections to `learned_fields`) | ✅ |
-| Radio/checkbox/select learning | ✅ |
-| Clear form with Oracle-specific cleanup | ✅ |
-| Oracle pill selector handling (Title, skills, questions) | ✅ |
-| Honeypot / framework-internal field filtering | ✅ |
-| Weighted scoring for field identification (label ×4, autocomplete ×3, etc.) | ✅ |
-| Select priority matching (exact > startsWith > word-boundary > includes) | ✅ |
-| LLM config test + status badge | ✅ |
-| Token usage tracking | ✅ |
-| Learned corrections UI (view/delete individual, clear all) in Settings | ✅ |
-| `scripts/reload_extension.mjs` — reload extension via CDP | ✅ |
-| Persistent Chrome profile (`.chrome-profile/`) keeps config across launches | ✅ |
+## Quick Reference
 
-### What's Broken / Missing
+```bash
+# Launch Chrome with JC
+bash scripts/dev_launch.sh
 
-| Issue | Priority | Details |
-|-------|----------|---------|
-| Extension deregistered from Chrome | 🔴 HIGH | Was using `chrome.runtime.reload()` which removed it. Need manual reload: `chrome://extensions` → Load unpacked → `extension/` |
-| Oracle country combobox rejects `el.value = "Poland"` | 🔴 HIGH | Oracle's custom combobox (`role="combobox"`, `.cx-select-input`) uses internal state. Need to click → open dropdown → select option instead of setting value directly. |
-| Phone country-code prefix | 🟡 MED | Profile stores `+33-753788537`. Oracle splits into country code (`+33`) and number (`753788537`). Need split logic in `buildFillMap()`. |
-| No retry on fill failure | 🟡 MED | When `fillField()` fails (e.g., combobox), there's no fallback. Need `fillFieldWithRetry()` that tries alternative methods. |
-| Field→profile mappings not learned | 🟡 MED | When JC fills `address` with "Gdansk, Poland" successfully, it doesn't remember that mapping for next time. |
-| ClearForm → auto-fill re-fill loop | 🟡 MED | 2026-05-25 19:40 UTC | `clearForm()` removes DOM elements → MutationObserver fires → `runSpaReFill()` fills all empty fields back. Fix: `skipAutoFill` flag prevents re-fill for 3s after clearing. |
-| Dependent field auto-fill | 🟢 LOW | User fills "country" → should auto-fill state/province, postal code format. |
-| SPA section tracking basic | 🟢 LOW | MutationObserver works but doesn't track _which_ sections have been seen. Can re-fill already-filled sections. |
-| Nyro endpoint intermittent | 🟡 MED | `http://localhost:19530/v1` was down last session. Need to check before starting. |
+# After launch, sync CDP tool:
+# File at ~/Library/Application Support/Google/Chrome/DevToolsActivePort
+# Format: 9222\n/devtools/browser
 
----
+# CDP tool (installed via pi install)
+scripts/cdp.mjs list
+scripts/cdp.mjs eval <target> "expression"
+scripts/cdp.mjs click <target> "selector"
+scripts/cdp.mjs nav <target> "url"
 
-## Session History
+# Oracle URL
+https://icfcjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/Aerospace/job/111402
 
-### 2026-05-23: Initial build
-**Focus:** Core extension functionality
-**Done:**
-- Resume PDF upload → LLM extraction pipeline
-- JSON parsing with sanitization recovery
-- PDF hyperlink extraction
-- Settings popup works on chrome:// pages
-- Auto-fill personal fields on form detection
-- Auto-click "Apply Now" on Oracle
-- MutationObserver for SPA re-detection
-- Clear All & Reset in Full Resume Data section
-- Edit buttons on experience, education, projects, publications
-- Skills/languages tag-based add/delete UI
-- Config status badge (⚠️/✅/❌)
-- Token usage tracking
+# Extension ID
+nbpeoddibjhngmomojgpeoiceocnoknn
 
-### 2026-05-24 (session 1): Debug session
-**Focus:** Fix issues found via Playwright inspection
-**Done:**
-- Honeypot classification → `isHoneypot()` in form-detector.js
-- Framework internal filtering → `isFrameworkInternal()`
-- Duplicate click listeners consolidated into single handler
-- Login screen detection → `isLoginScreen()` returns true if only email/unknown fields
-- MutationObserver checks `isLoginScreen()` before re-injecting
-- CSS injection verified (computed style: `rgb(59, 130, 246)` on button)
-- **Verified:** Oracle login screen correctly blocked ("JC: Login-only screen, waiting for application form...")
+# Oracle SPA CDP workaround (new tab with console suppression):
+# 1. Target.createTarget about:blank
+# 2. Runtime.enable + Page.enable
+# 3. Page.addScriptToEvaluateOnNewDocument suppress console
+# 4. Page.navigate to Oracle URL
+# 5. Wait 15s, then Runtime.evaluate
+```
 
-### 2026-05-24 (session 2): Vision model handoff
-**Focus:** Configure settings + test on Oracle
-**Done:**
-- Documented settings needed: API Base URL `http://localhost:19530/v1`, Key `dummy`, model `deepseek-v4-flash-2`
-- Resume PDF path: `~/Documents/Resume/tailored/Honeywell_20260522/Resume_Shivam_Bhalla_Honeywell_20260522.pdf`
-- Oracle job URL: `https://icfcjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/Aerospace/job/111402`
-- Extension ID: `nbpeoddibjhngmomojgpeoiceocnoknn`
-- **Blocked:** Model dropdown selection unreliable, PDF upload→text extraction not populating storage, Oracle's 547 shadow roots, fresh temp profiles losing config
+## Notes for Next Session
 
-### 2026-05-25: Major refactor
-**Focus:** Oracle-specific handling, learning system, persistent profile
-**Done:**
-- `buildFillMap()` — shared fill map builder with name/address parsing
-- `skipFieldForType()` — blocks mismatched fills (non-URL into URL, phone into URL, city into street_address, etc.)
-- `listenForCorrections()` + `saveLearnedCorrection()` — watches blur on filled fields, saves to `learned_fields`
-- `watchFormChanges()` — global watcher: radio, checkbox, select, text input learning
-- `fillLearnedRadios()` — applies learned radio answers
-- `fillExtras()` — Title (Mr.), skill matching from resume, application questions (default "No")
-- `runSpaReFill()` — SPA re-fill of empty fields only
-- `clearForm()` — comprehensive: Oracle remove-value buttons, delete buttons, text inputs, pill selectors, combobox inputs, profile items
-- Weighted scoring for field identification (label ×4, autocomplete ×3, ariaLabel ×2, name/id ×1)
-- Select priority matching (exact > startsWith > word-boundary > includes)
-- Oracle label fallback (`.oj-`, `.apply-flow`, `.input-row` selectors)
-- Learned corrections UI in Settings (individual delete + clear all)
-- Persistent `.chrome-profile/` setup with Bitwarden
-- `scripts/dev_launch.sh` convenience script
-- `scripts/reload_extension.mjs` for CDP-based reload
-- **Issue:** Extension deregistered from Chrome by `chrome.runtime.reload()` call
-
-### 2026-05-25 (session 2): Live co-debugging — ClearForm loop fix
-**Focus:** Oracle live debugging session. clearForm() was clearing fields but MutationObserver re-filled them.
-**Done:**
-- Diagnosed root cause: `clearForm()` dispatches DOM mutations → MutationObserver fires after 2s → `runSpaReFill()` fills empty fields
-- Fixed: Added `skipAutoFill` flag set to true after `clearForm()` completes, checked by MutationObserver and initial auto-fill
-- `skipAutoFill` resets to false after 3 seconds (allows normal auto-fill on genuine SPA transitions)
-- Also guarded the initial auto-fill timeout in `init()`
-- Syntax check passed: `node -c extension/content/content.js`
-- **Known:** Country combobox still rejects value (jcFilled=true, jcValue=Poland, but actual value is empty). Phone splitting not yet implemented.
-
-### 2026-05-25 (session 3): Chrome 148 killed --load-extension — built CDP pipe bridge
-**Focus:** Chrome 148 broke extension loading. Built replacement pipeline using --remote-debugging-pipe.
-**Done:**
-- Root cause: Chrome 137+ removed `--load-extension` from all branded builds
-- Built `scripts/launch_with_ext.mjs` — launches Chrome via `--remote-debugging-pipe`, loads extension via `Extensions.loadUnpacked` CDP command, runs WebSocket bridge on port 9222
-- Wrote `fillOracleCombobox()` + `isOracleCombobox()` in form-detector.js (click-to-open-dropdown for Oracle combobox)
-- Added `phone_country_code` field patterns to form-detector.js
-- Fixed syntax error in form-detector.js (methods placed outside FormDetector object)
-- All 4 JS files pass `node -c`
-- Adopted chrome-cdp-skill (`pi install git:github.com/pasky/chrome-cdp-skill@v1.0.2`) for CDP interaction
-- Learned: `Extensions.loadUnpacked` requires `--remote-debugging-pipe` (not port). Browser tool can't connect to pipe.
-- Bridge crash fixes: global error handlers, proper pipe listener cleanup, no listener accumulation.
-- Tested on Oracle: reached `/apply/email` page, filled email via CDP eval.
-**New files:** `scripts/launch_with_ext.mjs`, updated `scripts/dev_launch.sh`
-
----
-
-## Known Issues (Detailed)
-
-### 1. Oracle country combobox
-**Symptom:** `el.value = "Poland"` doesn't work on Oracle's custom combobox.
-**Root cause:** Oracle uses `<input role="combobox">` with `.cx-select-input` class. It has internal state that ignores direct value setting.
-**Fix strategy (not yet implemented):**
-1. Detect: `el.getAttribute('role') === 'combobox'` OR `el.closest('.cx-select')` exists
-2. Click the combobox to open dropdown
-3. Find `.cx-select-option` matching value (exact > startsWith > includes)
-4. Click matching option
-5. Dispatch `input` + `change` events
-
-### 2. Phone number splitting
-**Symptom:** Profile `+33-753788537` gets filled whole into the first phone field. Oracle splits into country code + number.
-**Fix strategy (not yet implemented):**
-- In `buildFillMap()`, add `phone_country_code` (extract before `-`) and `phone_number` (extract after `-`)
-- In `fillPersonal()`, detect fields named `phone_country_code` or labeled "country code" and fill with split value
-
-### 3. Chrome 148 killed --load-extension
-**Symptom:** `bash scripts/dev_launch.sh` starts Chrome but extension never loads.
-**Root cause:** Chrome 137+ removed `--load-extension` from all branded builds. We're on Chrome 148.
-**Replacement:** `--remote-debugging-pipe` + `Extensions.loadUnpacked` CDP command via `scripts/launch_with_ext.mjs`.
-**Setup:** The script launches Chrome in pipe mode, loads JC via CDP, runs a WebSocket bridge on 9222.
-**Prerequisite:** `chrome://inspect/#remote-debugging` toggle must be ON.
-**DevToolsActivePort:** Must point to the bridge. File: `~/Library/Application Support/Google/Chrome/DevToolsActivePort`. Format: `9222\n/devtools/browser`.
-**Bridge crash prevention:** Global error handlers + remove pipe listeners on WS close.
-
-### 4. chrome-cdp-skill (CDP interaction tool)
-**Install:** `pi install git:github.com/pasky/chrome-cdp-skill@v1.0.2`
-**Prereq:** `chrome://inspect/#remote-debugging` toggle ON
-**Commands:** `scripts/cdp.mjs list / eval / click / type / nav / html / snap / shot / clickxy <target>`
-**Target:** Unique prefix from `list` output (e.g. `24A88FBB`).
-**How:** Raw WebSocket CDP, no Puppeteer. Persistent daemon per tab.
-**Bridge compat:** Works when DevToolsActivePort is synced to bridge.
-
-### 5. Nyro endpoint
-
-### 4. Nyro endpoint
-Check if Nyro is running: `curl http://localhost:19530/v1/models`
-
----
-
-## Profile Data (stored in chrome.storage.sync)
-
-| Field | Value |
-|-------|-------|
-| profile_name | Shivam Bhalla |
-| profile_email | shivam.bhalla07@gmail.com |
-| profile_phone | +33-753788537 |
-| profile_address | Gdansk, Poland |
-| profile_work_authorization | (not set) |
-| resume_full_data | 6 sections (experience, education, skills, languages, projects, publications) |
-| llm_base_url | http://localhost:19530/v1 |
-| llm_model | deepseek-v4-flash-2 |
-
----
-
-## Roadmap
-
-### Phase 1: Fix Oracle-Specific Issues
-- [ ] Oracle combobox handler (`isOracleCombobox()`, `fillOracleCombobox()`) in form-detector.js
-- [ ] Phone number splitting (`phone_country_code`, `phone_number`) in content.js
-- [ ] Oracle combobox selectors (`.cx-select`, `.cx-select-container`) in `identify()`
-
-### Phase 2: Make Auto-Fill Smarter
-- [ ] Smarter SPA section detection (track detected sections in a Set)
-- [ ] Auto-fill retry with fallback (`fillFieldWithRetry()`)
-- [ ] Field→profile learning from successful fills
-- [ ] Watch mode: user fills country → auto-fill dependent fields
-
-### Phase 3: Live Co-Debugging Sessions
-- [ ] Run live session on Oracle job page
-- [ ] Iterate on combobox, phone, and other Oracle-specific issues
-- [ ] Test end-to-end: launch → navigate → fill → verify
-
----
-
-## How to Start a Session
-
-1. **You:** Launch Chrome with extension: `bash scripts/dev_launch.sh`
-2. **You:** Navigate to Oracle job URL, login with Bitwarden if needed, reach the application form
-3. **You:** Tell me "I'm at the form" or describe what's happening
-4. **Me:** Connect via codex-chrome or guide you through console snippets
-5. **Together:** Debug, fix, test, iterate
-6. **End:** I update this handbook with results
+- `FormDetector` is in MV3 isolated world — not accessible from `Runtime.evaluate` (main world). To debug: use `chrome.scripting.executeScript` or log from within content script.
+- Profile data IS stored (name, email, phone in `chrome.storage.sync`). Resume was extracted ("✅ Already extracted from PDF" shown).
+- Raw `resume_text` NOT stored — only structured profile fields. So "Fill AI Questions" shows "No resume uploaded."
+- `handoff/HANDOFF-2026-05-25.md` has full session dump.
