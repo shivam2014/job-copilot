@@ -74,6 +74,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const resumeTa = document.getElementById('resume_text');
       resumeTa.value = text;
       resumeTa.style.display = 'block';
+      // Explicitly persist to storage (debounced auto-save may fail on large resumes due to quota)
+      try { chrome.storage.sync.set({ resume_text: text }); } catch(e) { console.warn('JC: Failed to save resume_text:', e.message); }
     } catch (err) {
       showUploadStatus(`❌ ${err.message}`, 'error');
     }
