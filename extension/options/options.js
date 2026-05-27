@@ -9,7 +9,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     'profile_name', 'profile_email', 'profile_phone',
     'profile_linkedin', 'profile_github', 'profile_website',
     'profile_address', 'profile_work_authorization',
-    'resume_text',
   ];
   fields.forEach(f => {
     const el = document.getElementById(f);
@@ -70,12 +69,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       showUploadStatus(`✅ ${file.name} — ${text.length} chars`, 'success');
       // Auto-extract profile directly
       await runExtraction(text, file.name);
-      // Store resume text for AI question answering
+      // Show raw text in textarea for reference (data is in resume_full_data)
       const resumeTa = document.getElementById('resume_text');
       resumeTa.value = text;
       resumeTa.style.display = 'block';
-      // Explicitly persist to storage (debounced auto-save may fail on large resumes due to quota)
-      try { chrome.storage.sync.set({ resume_text: text }); } catch(e) { console.warn('JC: Failed to save resume_text:', e.message); }
     } catch (err) {
       showUploadStatus(`❌ ${err.message}`, 'error');
     }
@@ -125,7 +122,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Clear storage
     chrome.storage.sync.remove('resume_full_data');
-    chrome.storage.sync.remove('resume_text');
     
     // Reset extract button
     document.getElementById('extract-btn').disabled = false;

@@ -193,10 +193,9 @@ function injectPerFieldButtons() {
 }
 
 
-// Get resume text from storage — checks resume_text first, falls back to resume_full_data
+// Get resume context from resume_full_data (single source of truth)
 async function getResumeText() {
-  const data = await chrome.storage.sync.get(['resume_text', 'resume_full_data']);
-  if (data.resume_text) return data.resume_text;
+  const data = await chrome.storage.sync.get(['resume_full_data']);
   if (data.resume_full_data) {
     try {
       const full = JSON.parse(data.resume_full_data);
