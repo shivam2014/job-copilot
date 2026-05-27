@@ -192,15 +192,50 @@ function injectPerFieldButtons() {
   }
 }
 
+
+// Get resume text from storage — checks resume_text first, falls back to resume_full_data
+async function getResumeText() {
+  const data = await chrome.storage.sync.get(['resume_text', 'resume_full_data']);
+  if (data.resume_text) return data.resume_text;
+  if (data.resume_full_data) {
+    try {
+      const full = JSON.parse(data.resume_full_data);
+      const sections = full.rawSections || {};
+      let text = '';
+      if (full.summary) text += full.summary + '\n\n';
+      if (sections.experience) {
+        for (const e of sections.experience) {
+          text += (e.title || '') + ' at ' + (e.company || '') + ' (' + (e.start_date || '') + ' - ' + (e.end_date || '') + ')\n';
+          if (e.description) text += e.description + '\n';
+        }
+        text += '\n';
+      }
+      if (sections.education) {
+        for (const ed of sections.education) {
+          text += (ed.degree || '') + ' ' + (ed.field || '') + ' at ' + (ed.school || '') + '\n';
+        }
+        text += '\n';
+      }
+      if (sections.skills) text += 'Skills: ' + sections.skills.join(', ') + '\n';
+      if (sections.projects) {
+        for (const p of sections.projects) text += (p.name || '') + ': ' + (p.description || '') + '\n';
+      }
+      return text.trim();
+    } catch(e) { return ''; }
+  }
+  return '';
+}
+
 // Fill one field — text/select from profile, textarea via LLM
 async function fillSingleField(field) {
   const fieldLabel = field.label || field.name || 'field';
 
   // Textarea → call LLM
   if (field.el instanceof HTMLTextAreaElement) {
-    const profile = await chrome.storage.sync.get(['llm_base_url', 'llm_api_key', 'llm_model', 'resume_text']);
-    if (!profile.resume_text) {
-      showStatus('No resume — open settings.', 'error');
+    const profile = await chrome.storage.sync.get(['llm_base_url', 'llm_api_key', 'llm_model']);
+    const resumeText = await getResumeText();
+    if (!resumeText) {
+      showStatus('No resume — upload PDF in settings first.', 'error');
       makeStatusClickable();
       return;
     }
@@ -213,7 +248,7 @@ async function fillSingleField(field) {
     });
     try {
       showStatus('Generating answer...', 'info');
-      const answer = await LLMClient.generateAnswer(question, jd, profile.resume_text);
+      const answer = await LLMClient.generateAnswer(question, jd, resumeText);
       await FormDetector.fillField(field, answer);
       await saveAnswer(question, answer);
       showStatus('Answered!', 'success');
@@ -289,12 +324,12 @@ async function fillPersonal() {
 // ── Fill All — AI Questions ────────────────────────────────────────
 async function fillAIQuestions() {
   const profile = await chrome.storage.sync.get([
-    'llm_base_url', 'llm_api_key', 'llm_model',
-    'resume_text', 'profile_name',
+    'llm_base_url', 'llm_api_key', 'llm_model', 'profile_name',
   ]);
+  const resumeText = await getResumeText();
 
-  if (!profile.resume_text) {
-    showStatus('No resume — open settings.', 'error');
+  if (!resumeText) {
+    showStatus('No resume — upload PDF in settings first.', 'error');
     makeStatusClickable();
     return;
   }
@@ -316,14 +351,14 @@ async function fillAIQuestions() {
         model: profile.llm_model || 'gpt-4o-mini',
       });
 
-      const answer = await LLMClient.generateAnswer(question, jobDescription, profile.resume_text);
+      const answer = await LLMClient.generateAnswer(question, jobDescription, resumeText);
       await FormDetector.fillField(field, answer);
 
       try {
         if (typeof TokenTracker !== 'undefined') {
-          const approx = Math.ceil((question.length + answer.length + (profile.resume_text || '').length) / 4);
+          const approx = Math.ceil((question.length + answer.length + resumeText.length) / 4);
           TokenTracker.record(profile.llm_model || 'unknown', {
-            prompt_tokens: Math.ceil(((question.length + (profile.resume_text || '').length)) / 4),
+            prompt_tokens: Math.ceil(((question.length + resumeText.length)) / 4),
             completion_tokens: Math.ceil(answer.length / 4),
             total_tokens: approx,
           });
