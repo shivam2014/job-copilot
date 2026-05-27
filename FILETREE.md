@@ -4,7 +4,8 @@ _Auto-maintained by `/filetree:update`. Each entry carries a content hash; misma
 
 ## (root)/
 
-- `.gitignore` — Git ignore rules for node_modules, .chrome-profile, and test artifacts <!--hash:fa87c4b5-->
+- `.gitignore` — Git ignore rules for node_modules, .chrome-profile, .reasonix, and test artifacts <!--hash:929fe5d4-->
+- `AGENTS.md` — Agent contract: project map reference, architecture overview, quick commands <!--hash:2ffac624-->
 - `ARCHITECTURE.md` — Project architecture overview and component relationships <!--hash:2ca879c0-->
 - `GUIDE.md` — Session workflow guide: launch, debug, CDP tools, testing protocol <!--hash:e85d7b12-->
 - `HANDBOOK.md` — Current state, known blockers, architecture notes, and development setup <!--hash:01494538-->
@@ -15,35 +16,6 @@ _Auto-maintained by `/filetree:update`. Each entry carries a content hash; misma
 - `package.json` — Node.js package config with Playwright dev dependency <!--hash:5df512b6-->
 - `playwright.config.mjs` — Playwright test configuration for browser automation tests <!--hash:9d096707-->
 - `test_extract.py` — Python script for resume text extraction and profile parsing <!--hash:b4e3f9da-->
-
-## .reasonix/skills/
-
-- `caveman.md` — Reasonix skill: ultra-compressed communication mode to cut token usage <!--hash:5f8c16db-->
-- `cognitive-apprenticeship.md` — Reasonix skill: learn from AI reasoning process and debugging approach <!--hash:0172152a-->
-- `diagnose.md` — Reasonix skill: disciplined diagnosis loop for hard bugs and regressions <!--hash:56732757-->
-- `doc.md` — Reasonix skill: create and edit .docx documents with formatting fidelity <!--hash:62b58c3a-->
-- `drawio-skill.md` — Reasonix skill: generate .drawio diagrams and export to PNG/SVG/PDF <!--hash:edd99a9e-->
-- `electron.md` — Reasonix skill: automate Electron desktop apps via Chrome DevTools Protocol <!--hash:819408c6-->
-- `excalidraw-diagram.md` — Reasonix skill: create Excalidraw diagram JSON for visual arguments <!--hash:45bab54d-->
-- `feynman-workflow.md` — Reasonix skill: ship fast and learn deep development methodology <!--hash:3dfcccfe-->
-- `gh-address-comments.md` — Reasonix skill: address review and issue comments on GitHub PRs <!--hash:f428fce2-->
-- `gh-fix-ci.md` — Reasonix skill: debug and fix failing GitHub Actions CI checks <!--hash:80b1ebb6-->
-- `grill-me.md` — Reasonix skill: interview user about plan or design until shared understanding <!--hash:893b6f57-->
-- `grill-with-docs.md` — Reasonix skill: grill plan against existing domain model and update docs <!--hash:4ec69d7a-->
-- `handoff.md` — Reasonix skill: compact conversation into handoff document for another agent <!--hash:ecb906d7-->
-- `html-effectiveness.md` — Reasonix skill: create single-file HTML pages for any purpose <!--hash:bec3219f-->
-- `humanizer.md` — Reasonix skill: remove signs of AI-generated writing from text <!--hash:8c2b4208-->
-- `improve-codebase-architecture.md` — Reasonix skill: find deepening opportunities in codebase architecture <!--hash:c77ca62e-->
-- `jupyter-notebook.md` — Reasonix skill: create, scaffold, or edit Jupyter notebooks <!--hash:d900d5c5-->
-- `keep-codex-fast.md` — Reasonix skill: safe maintenance for Codex Desktop/CLI state <!--hash:72428974-->
-- `local-latex.md` — Reasonix skill: compile LaTeX documents to PDF using local TinyTeX <!--hash:c04f724c-->
-- `overleaf.md` — Reasonix skill: sync and manage Overleaf LaTeX projects from command line <!--hash:2971e36e-->
-- `pdf.md` — Reasonix skill: read, create, or review PDF files with layout fidelity <!--hash:0688b3c6-->
-- `playwright.md` — Reasonix skill: automate real browser from terminal via playwright-cli <!--hash:98f8d472-->
-- `scrapling-official.md` — Reasonix skill: scrape web pages with anti-bot bypass and stealth browsing <!--hash:b6ef7442-->
-- `sysml-modeling.md` — Reasonix skill: SysML modeling for Model-Based Systems Engineering <!--hash:8f2db0ea-->
-- `tdd.md` — Reasonix skill: test-driven development with red-green-refactor loop <!--hash:5bf17a81-->
-- `youtube-transcript-extractor.md` — Reasonix skill: fetch and save YouTube video transcripts <!--hash:e4fc3420-->
 
 ## extension/
 

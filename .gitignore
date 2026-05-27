@@ -31,3 +31,4 @@ test/
 .pw-*/
 .ext_id
 node_modules/
+.reasonix
