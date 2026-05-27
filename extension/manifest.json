@@ -28,6 +28,7 @@
         "<all_urls>"
       ],
       "js": [
+        "lib/token-tracker.js",
         "lib/llm-client.js",
         "content/form-detector.js",
         "content/content.js"

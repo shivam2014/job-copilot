@@ -103,52 +103,6 @@ const FormDetector = {
     hispanic: [
       'hispanic', 'latino', 'hispaniclatino',
     ],
-
-  // ─── Experience & Education (added by JC) ────────────────────────────
-  // These fields appear after clicking "Add Experience" / "Add Education".
-  // Filled by fillProfileSections() → fillSingleSection(), NOT by fillPersonal().
-  // Form names (employerName, jobTitle) match Oracle CX input name= attributes.
-  employer_name: [
-    'employername', 'employer_name', 'employer name',
-    'company', 'organization',
-  ],
-  job_title: [
-    'jobtitle', 'job_title', 'job title',
-    'title',
-  ],
-  responsibilities: [
-    'responsibilities', 'responsibilities description',
-    'jobdescription', 'job_description',
-  ],
-  school: [
-    'educationalestablishment', 'educational_establishment',
-    'school', 'institution', 'university', 'college',
-  ],
-  degree: [
-    'contentitemid', 'content_item_id',
-    'degree', 'diploma',
-  ],
-  major: [
-    'major', 'fieldofstudy', 'field_of_study',
-  ],
-  minor: [
-    'minor', 'secondaryfield', 'secondary_field',
-  ],
-  education_level: [
-    'educationlevel', 'education_level', 'education level',
-  ],
-  start_date: [
-    'startdate', 'start_date', 'start date',
-  ],
-  end_date: [
-    'enddate', 'end_date', 'end date',
-  ],
-  employer_city: [
-    'employercity', 'employer_city', 'employer city',
-  ],
-  employer_country: [
-    'countrycode', 'employer country',
-  ],
   },
 
   // Field types that map to profile values
@@ -366,8 +320,6 @@ const FormDetector = {
     }
 
     // ── TEXT INPUTS / TEXTAREAS: Fallback chain ────────────────
-    // Strategy 1: Direct DOM value + events
-  // Simple assignment + standard events. Works for 90% of non-Oracle fields.
     return await this.fillTextInput(el, field, valueStr);
   },
 
@@ -377,8 +329,6 @@ const FormDetector = {
     const lowerValue = value.toLowerCase().trim();
     
     // Phase 1: exact match
-  // 4 phases: exact, startsWith, word-boundary regex, includes.
-  // Handles variations like "United States" vs "US".
     let match = options.find(o => 
       o.text.toLowerCase().trim() === lowerValue ||
       o.value.toLowerCase().trim() === lowerValue
@@ -417,22 +367,19 @@ const FormDetector = {
     return false;
   },
 
-  // Fill a text input/textarea with fallback chain
   // ═══════════════════════════════════════════════════════════════
   // fillTextInput — Fill text/email/tel inputs (not comboboxes)
   // ═══════════════════════════════════════════════════════════════
-  // STRATEGIES (non-Oracle fields usually succeed at #1 or #2):
+  // STRATEGIES:
   //   1. Direct DOM value + input/change events
   //   2. Native value setter (Object.getOwnPropertyDescriptor setter)
-  //   ── Oracle CX only (isOracleCXField check) ──
-  //   3. Char-by-char typing (progressive value + input events)
-  //   4. InputEvent per-character
+  //   3. Char-by-char typing (Oracle CX only, progressive value + input events)
+  //   4. InputEvent per-character (Oracle CX only, most compatible with Knockout)
   async fillTextInput(el, field, value) {
     const fieldLabel = field.label || field.name || 'field';
     const isOracle = this.isOracleCXField(el);
     
     // Strategy 1: Direct DOM value + events
-  // Simple assignment + standard events. Works for 90% of non-Oracle fields.
     el.focus();
     el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -445,8 +392,6 @@ const FormDetector = {
     }
     
     // Strategy 2: Native value setter (works for React/Vue)
-  // Uses Object.getOwnPropertyDescriptor to access raw prototype setter.
-  // Bypasses React/Vue interceptors. Still fails for Knockout (async clear).
     const nativeSetter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype, 'value'
     )?.set;
@@ -463,12 +408,8 @@ const FormDetector = {
     }
     
     // ── Oracle CX: Knockout-specific fallbacks ─────────────────
-  // These only activate when isOracleCXField(el) returns true.
-  // Handle Knockout async observable clearing by simulating human typing.
     if (isOracle) {
-      // Strategy 3: Character-by-character typing (bypasses Knockout filters)
-  // Progressive value: P, Po, Pol, Pola, Polan, Poland with input events.
-  // Knockout textInput binding updates observable on each input event.
+      // Strategy 3: Character-by-character typing
       console.log(`JC: fillField [${fieldLabel}] → DOM+setter failed, trying char-by-char`);
       try {
         el.focus();
@@ -495,11 +436,7 @@ const FormDetector = {
         console.log(`JC: fillField [${fieldLabel}] → char-by-char error: ${e.message}`);
       }
       
-      // Strategy 4: InputEvent per-character (most compatible with Knockout)
-  // Last resort. Dispatches InputEvent(insertText) for each char.
-  // Caters to custom Knockout bindings that only respond to insertText.
-  // Dispatches InputEvent with inputType=insertText for each character.
-  // Some Knockout bindings only respond to this, not to plain input events.
+      // Strategy 4: InputEvent per-character
       console.log(`JC: fillField [${fieldLabel}] → trying InputEvent per-char`);
       try {
         el.focus();
@@ -535,72 +472,16 @@ const FormDetector = {
     console.log(`JC: fillField [${fieldLabel}] → ALL strategies failed`);
     return false;
   },
-
-  // Inject AI button next to a textarea
-  // Inject a sparkle button next to a textarea for AI-generated answers
-  injectAIButton(textareaEl, onClick) {
-    if (textareaEl.dataset.jcInjected) return;
-    textareaEl.dataset.jcInjected = 'true';
-
-    const btn = document.createElement('button');
-    btn.className = 'jc-ai-btn';
-    btn.title = 'Generate with AI';
-    btn.innerHTML = '✨';
-    btn.style.cssText = `
-      position: absolute;
-      right: 4px;
-      bottom: 4px;
-      width: 28px; height: 28px;
-      border: none; border-radius: 6px;
-      background: #3b82f6; color: white;
-      cursor: pointer; font-size: 14px;
-      display: flex; align-items: center; justify-content: center;
-      opacity: 0.7; transition: opacity 0.2s;
-      z-index: 999999;
-    `;
-    btn.onmouseenter = () => btn.style.opacity = '1';
-    btn.onmouseleave = () => btn.style.opacity = '0.7';
-    btn.onclick = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      onClick(textareaEl);
-    };
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'jc-field-wrapper';
-    wrapper.style.cssText = `
-      position: relative; display: inline-block; width: 100%;
-    `;
-    textareaEl.parentNode.insertBefore(wrapper, textareaEl);
-    wrapper.appendChild(textareaEl);
-    wrapper.appendChild(btn);
-  }
 };
 
 // ═══════════════════════════════════════════════════════════════
 // fillOracleCombobox — 4-strategy fallback chain for Knockout
 // ═══════════════════════════════════════════════════════════════
-// PROBLEM: Oracle CX uses Knockout.js which rejects synthetic input events.
-//   Setting el.value = "Poland" works synchronously but Knockout
-//   clears it asynchronously (via subscribers/observables).
-//
 // STRATEGIES (tried in order, first success wins):
 //   1. DOM click → find dropdown option → click it
-//      Why it fails: Knockout hasn't rendered the dropdown yet after .click()
-//   2. Native value setter (Object.getOwnPropertyDescriptor setter)
-//      + Enter key event + 300ms async verification
-//      Why it fails sometimes: Knockout observable rejects the value
-//      after the 300ms async check detects the value was cleared
-//   3. Char-by-char typing: progressively set value.substring(0,i+1)
-//      + input event at each step. 30ms delay between chars.
-//      Why it works: Knockout sees progressive changes as human typing,
-//      and updates its observable for each character
-//   4. InputEvent per-character: dispatch
-//      new InputEvent('input', {inputType: 'insertText', data: char})
-//      for each character. Fallback if char-by-char fails.
-//
-// CDP REMOVED: chrome.debugger.attach() conflicts with
-//   --remote-debugging-pipe mode used by CDP bridge.
+//   2. Native value setter + Enter + 300ms async verification
+//   3. Char-by-char typing (progressive value + input events, 30ms/char)
+//   4. InputEvent per-character (insertText for each char)
 FormDetector.fillOracleCombobox = async function(el, value) {
   const valueStr = (value || '').trim();
   if (!valueStr) {
@@ -611,12 +492,10 @@ FormDetector.fillOracleCombobox = async function(el, value) {
   const fieldLabel = el.name || el.id || 'Oracle combobox';
   
   // Strategy 1: DOM approach — click to open dropdown, find option, select it
-  // Clicks combobox, searches dropdown options by exact text, startsWith, includes.
-  // Often fails because Knockout renders dropdown asynchronously after click().
   try {
     el.focus();
     el.click();
-    await new Promise(r => setTimeout(r, 400)); // Wait for dropdown render
+    await new Promise(r => setTimeout(r, 400));
     
     const valueLower = valueStr.toLowerCase().trim();
     const selectors = ['.cx-select-option', '[role="option"]', '.oj-select-choice'];
@@ -629,7 +508,6 @@ FormDetector.fillOracleCombobox = async function(el, value) {
         o.getAttribute('data-value')?.toLowerCase() === valueLower
       );
       if (match) break;
-      // Try startsWith
       match = Array.from(options).find(o =>
         o.textContent.trim().toLowerCase().startsWith(valueLower) ||
         valueLower.startsWith(o.textContent.trim().toLowerCase())
@@ -651,10 +529,6 @@ FormDetector.fillOracleCombobox = async function(el, value) {
   }
   
   // Strategy 2: Native value setter + Enter + async verification
-  // Sets value via prototype setter + dispatches Enter key for selection.
-  // Waits 300ms to verify Knockout didnt clear it (async check).
-  // NOTE: Knockout may asynchronously clear the value after setter. We wait
-  // 300ms to verify the value actually persisted before declaring success.
   try {
     el.focus();
     const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
@@ -665,21 +539,17 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
     el.blur();
-    // Async verification: wait for Knockout to process events before checking
     await new Promise(r => setTimeout(r, 300));
     if (el.value === valueStr) {
       console.log(`JC: fillOracleCombobox [${fieldLabel}] → native setter OK`);
       return true;
     }
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → native setter: async check failed (Knockout cleared it)`);
+    console.log(`JC: fillOracleCombobox [${fieldLabel}] → native setter: async check failed`);
   } catch(e) {
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → native setter error: ${e.message}`);
   }
   
-  // Strategy 3: Character-by-character typing (progressive value + input events)
-  // Same char-by-char as text input plus Enter key at end for combobox selection.
-  // 30ms delay between chars. Knockout sees this as human typing.
-  // Workday autofill approach — sets value progressively so Knockout sees each change
+  // Strategy 3: Character-by-character typing
   console.log(`JC: fillOracleCombobox [${fieldLabel}] → trying char-by-char typing`);
   try {
     el.focus();
@@ -708,11 +578,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char error: ${e.message}`);
   }
   
-  // Strategy 4: InputEvent per-character (most compatible with Knockout)
-  // Last resort. Dispatches InputEvent(insertText) for each char.
-  // Caters to custom Knockout bindings that only respond to insertText.
-  // Dispatches InputEvent with inputType=insertText for each character.
-  // Some Knockout bindings only respond to this, not to plain input events.
+  // Strategy 4: InputEvent per-character
   console.log(`JC: fillOracleCombobox [${fieldLabel}] → trying InputEvent per-char`);
   try {
     el.focus();
@@ -752,12 +618,10 @@ FormDetector.fillOracleCombobox = async function(el, value) {
 
 FormDetector.isOracleCombobox = function(el) {
   // Checks role=combobox or inside .cx-select.
-  // Routes to fillOracleCombobox() vs fillTextInput() in fillField().
   return el.getAttribute('role') === 'combobox' || !!el.closest('.cx-select');
 };
 
 // Debug logging — call this to log all detected fields to console
-// Print all detected fields to console (call from dev tools for debugging)
 FormDetector.debugLog = function() {
   const fields = this.detect();
   console.log('🔍 Job Copilot — Form Detection Report');

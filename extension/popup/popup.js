@@ -1,4 +1,4 @@
-// Popup script
+// Popup script — simplified: Fill All + Clear All only
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
@@ -8,12 +8,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const actionsSection = document.getElementById('actions-section');
   const msg = document.getElementById('msg');
 
-  // Check if we're on a web page where the content script can run
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url || '';
   
   if (!url.startsWith('http')) {
-    // Not on a web page - show settings link
     document.getElementById('fields-section').style.display = 'none';
     document.getElementById('actions-section').style.display = 'none';
     document.getElementById('status-text').textContent = 'Open a job application page to use Copilot';
@@ -77,7 +75,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       msg.textContent = `✅ ${profile.profile_name} — profile + AI ready`;
     }
 
-    // Make settings link work
     document.querySelectorAll('#msg-settings, #open-settings').forEach(el => {
       el?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -85,24 +82,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     });
 
-    // Button handlers
-    document.getElementById('fill-personal').onclick = async () => {
-      setStatus('Filling personal fields...', 'loading');
-      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_personal' });
-      setStatus('Personal fields filled!', 'success');
-    };
-
-    document.getElementById('fill-ai').onclick = async () => {
-      setStatus('Generating AI answers...', 'loading');
-      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_ai' });
-      setStatus('AI questions filled!', 'success');
-    };
-
+    // Fill All — single message to content script
     document.getElementById('fill-all').onclick = async () => {
       setStatus('Filling all fields...', 'loading');
-      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_personal' });
-      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_ai' });
+      await chrome.tabs.sendMessage(tab.id, { type: 'jc_fill_all' });
       setStatus('All fields filled!', 'success');
+    };
+
+    // Clear All
+    document.getElementById('clear-all').onclick = async () => {
+      setStatus('Clearing fields...', 'loading');
+      await chrome.tabs.sendMessage(tab.id, { type: 'jc_clear_form' });
+      setStatus('Fields cleared!', 'success');
     };
 
   } catch (err) {
