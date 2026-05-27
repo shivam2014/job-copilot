@@ -68,8 +68,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const arrayBuffer = await file.arrayBuffer();
       const text = await extractTextFromPDF(arrayBuffer);
       showUploadStatus(`✅ ${file.name} — ${text.length} chars`, 'success');
-      // Auto-extract profile directly (skip textarea)
+      // Auto-extract profile directly
       await runExtraction(text, file.name);
+      // Store resume text for AI question answering
+      const resumeTa = document.getElementById('resume_text');
+      resumeTa.value = text;
+      resumeTa.style.display = 'block';
     } catch (err) {
       showUploadStatus(`❌ ${err.message}`, 'error');
     }
@@ -161,7 +165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     extractAbort = new AbortController();
 
     try {
-      const prompt = 'JSON only from resume: name,email,phone,linkedin,github,website,address,work_authorization,summary,skills[],experience[{title,company,start_date,end_date,description}],education[{school,degree,field,start_date,end_date}],languages[{name,level}],projects[{name,description}],publications[{title,url}]. Start with {. End with }. No null.';
+      const prompt = 'JSON only from resume: name,email,phone,linkedin,github,website,street,city,state,postal_code,country,work_authorization,summary,skills[],experience[{title,company,city,start_date,end_date,description}],education[{school,degree,field,start_date,end_date}],languages[{name,level}],projects[{name,description}],publications[{title,url}]. Start with {. End with }. No null.';
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
@@ -627,10 +631,10 @@ document.getElementById('rd-exp-save').onclick = function() {
   if (!title && !company) return;
     var editIdx = document.getElementById('rd-exp-form').dataset.editIndex;
   if (editIdx !== undefined && data.rawSections.experience[editIdx]) {
-    data.rawSections.experience[editIdx] = { title: title, company: company, start_date: start, end_date: end, description: desc };
+    data.rawSections.experience[editIdx] = { title: title, company: company, start_date: start, end_date: end, description: desc, city: document.getElementById('rd-exp-city').value.trim() };
     delete document.getElementById('rd-exp-form').dataset.editIndex;
   } else {
-    data.rawSections.experience.push({ title: title, company: company, start_date: start, end_date: end, description: desc });
+    data.rawSections.experience.push({ title: title, company: company, start_date: start, end_date: end, description: desc, city: document.getElementById('rd-exp-city').value.trim() });
   }
   document.getElementById('rd-exp-title').value = '';
   document.getElementById('rd-exp-company').value = '';
@@ -639,6 +643,7 @@ document.getElementById('rd-exp-save').onclick = function() {
   document.getElementById('rd-exp-end').value = '';
   document.getElementById('rd-exp-end-y').value = '';
   document.getElementById('rd-exp-desc').value = '';
+  document.getElementById('rd-exp-city').value = '';
   document.getElementById('rd-json-editor').value = JSON.stringify(data, null, 2);
   saveResumeData(data);
   renderEditableLists(data);
@@ -764,6 +769,7 @@ document.addEventListener('click', function(e) {
     var item = items[idx];
     if (list === 'experience') {
       document.getElementById('rd-exp-title').value = item.title || '';
+      document.getElementById('rd-exp-city').value = item.city || '';
       document.getElementById('rd-exp-company').value = item.company || '';
       var parts = (item.start_date || '').split('/');
       document.getElementById('rd-exp-start').value = parts[0] || '';
@@ -873,6 +879,7 @@ function renderEditableLists(data) {
       html += '<div style="flex:1">';  // content left
       if (item.title) html += '<div class="rd-card-title">' + escHtml(item.title) + '</div>';
       if (item.company) html += '<div class="rd-card-sub">' + escHtml(item.company) + '</div>';
+      if (item.city) html += '<div class="rd-card-sub">' + escHtml(item.city) + '</div>';
       if (item.start_date || item.end_date) {
             var sd = item.start_date || '';
             var ed = item.end_date || '';

@@ -1,4 +1,19 @@
-// Background service worker
+// ═══════════════════════════════════════════════════════════════
+// Background service worker — handles PDF + LLM tasks
+// ═══════════════════════════════════════════════════════════════
+//
+// WHAT IT DOES:
+//   1. PDF text extraction (extract_pdf_text) — reads uploaded resume PDFs
+//   2. LLM profile extraction (extract_profile_from_text) — sends resume text
+//      to LLM endpoint, parses JSON response into structured profile fields
+//   3. Opens extension options page (jc_open_options)
+//
+// WHAT WAS REMOVED:
+//   jc_cdp_fill_combobox handler — used chrome.debugger to type into Oracle CX
+//   comboboxes. Removed because chrome.debugger.attach() conflicts with
+//   --remote-debugging-pipe mode used by our CDP bridge.
+//   Replacement: char-by-char typing + InputEvent strategies in fillOracleCombobox().
+
 
 const PDF_WORKER = chrome.runtime.getURL('lib/pdfjs/pdf.worker.min.mjs');
 let pdfjsLib = null;
@@ -12,6 +27,7 @@ async function getPdfJs() {
   return pdfjsLib;
 }
 
+// On first install, set default LLM config if not already configured.
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.sync.get('llm_base_url', (result) => {
     if (!result.llm_base_url) {
@@ -24,7 +40,10 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Handle PDF extraction + LLM profile extraction
+// ── Message handlers ──────────────────────────────────────────────
+// extract_pdf_text: reads PDF bytes from content script, extracts text via pdf.js
+// extract_profile_from_text: sends resume text to LLM, parses structured profile JSON
+// jc_open_options: opens the extension options page
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'extract_pdf_text') {
     (async () => {
@@ -103,4 +122,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+
 });

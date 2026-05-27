@@ -1,14 +1,18 @@
 // Content script — injected into job pages
 
+// Stores last FormDetector.detect() result, panel DOM reference, and whether panel was open before SPA nav
 let detectedFields = null;
 let jcPanel = null;
 let panelWasOpen = false;
 
+// Returns true if page has only email input (login wall) and no selects/files — tells init() to skip auto-fill
 function isLoginScreen(fields) {
   const applicationFields = fields.personal.filter(function(f) { return f.name !== 'email' && f.name !== 'unknown'; });
   return applicationFields.length === 0 && fields.selects.length === 0 && fields.files.length === 0;
 }
 
+// When user clicks any button/link containing Apply/Next/Continue text: wait 3s for Oracle CX SPA to render new section,
+// then re-inject JC button if Oracle wiped it, re-attach AI buttons to textareas, restore panel open state, notify popup
 document.addEventListener('click', function(e) {
   var t = e.target.closest('button, a') || e.target;
   if (t.tagName === 'BUTTON' || t.tagName === 'A') {
@@ -36,6 +40,8 @@ document.addEventListener('click', function(e) {
 });
 
 // Main init
+// Boot on page load. setTimeout(1500ms) lets Oracle CX SPA render. Then: FormDetector.detect(), inject #jc-float-btn + #jc-panel,
+// watchFormChanges() to learn user edits, injectAIAssistButtons() for textarea AI buttons. No auto-fill (was removed due to re-fill loop).
 async function init() {
 
   setTimeout(function() {
@@ -114,6 +120,8 @@ injectFloatingButton();
   }, 1500);
 }
 
+// Create <button id=jc-float-btn>JC</button> + control panel (#jc-panel), append to body.
+// Guard: returns early if #jc-float-btn already exists (prevents init + observer race).
 function injectFloatingButton() {
   if (document.getElementById('jc-float-btn')) return;
 
@@ -141,6 +149,9 @@ function injectFloatingButton() {
   });
 }
 
+// Create or return existing #jc-panel with all button handlers bound (Fill Personal, Fill AI, Fill All, Clear All).
+// Fill All handler: checks __jcFilling guard → runs fillPersonal, fillAIQuestions, fillExtras, fillProfileSections.
+// dataset.jcBound prevents double-binding when init() + observer both call createPanel().
 function createPanel() {
   const existingPanel = document.getElementById('jc-panel');
   if (existingPanel) {
@@ -188,6 +199,7 @@ function createPanel() {
     await fillPersonal();
     await fillAIQuestions();
     await fillExtras();
+    await fillProfileSections();
     window.__jcFilling = false;
   };
   jcPanel.querySelector('#jc-clear-form').onclick = () => {
@@ -200,6 +212,7 @@ function createPanel() {
   return jcPanel;
 }
 
+// Re-run FormDetector.detect(), update #jc-stats with current personal/selects/textarea/file counts
 function updatePanel() {
   const stats = document.getElementById('jc-stats');
   if (!stats) return;
@@ -226,6 +239,9 @@ function updatePanel() {
   `;
 }
 
+// Scan page via FormDetector.detect(), read profile from chrome.storage.sync via buildFillMap(),
+// apply learned_fields corrections, then for each personal field + select: FormDetector.fillField() which routes
+// to fillTextInput (text/email/tel), fillSelect (native dropdown), or fillOracleCombobox (Knockout combobox).
 async function fillPersonal() {
   const fields = FormDetector.detect();
   const fillMap = await buildFillMap();
@@ -264,6 +280,8 @@ async function fillPersonal() {
   }
 }
 
+// For each textarea detected as custom question: call LLMClient.generateAnswer(question, jobDesc, resumeText),
+// fill answer via FormDetector.fillField(), save to storage. Uses user-configured LLM endpoint from chrome.storage.sync.
 async function fillAIQuestions() {
   const profile = await chrome.storage.sync.get([
     'llm_base_url', 'llm_api_key', 'llm_model',
@@ -328,6 +346,9 @@ async function fillAIQuestions() {
 // --- Shared fill helpers ---
 
 // Build the fill map from profile data, parsing name/address into parts
+// Read chrome.storage.sync profile data, return {first_name, last_name, email, phone, country, ...}.
+// Parses: name "Shivam Bhalla" → first+last, address "Street, City, Poland" → street+city+country,
+// phone "+33-753788537" → countryCode + local. LLM-extracted address parts override address splitting.
 async function buildFillMap() {
   const profile = await chrome.storage.sync.get([
     'profile_name', 'profile_email', 'profile_phone', 'profile_linkedin',
@@ -373,6 +394,7 @@ async function buildFillMap() {
 }
 
 // Skip filling a field when the value doesn't match the field type
+// Return true if value type mismatches field type: URL text into city field, phone digits into URL field, etc.
 function skipFieldForType(field, value) {
   // Don't put non-URL text into url-type fields
   if (field.el.type === 'url' && !value.startsWith('http')) return true;
@@ -390,6 +412,8 @@ function skipFieldForType(field, value) {
 }
 
 // Learn from user corrections — after JC fills fields, watch for edits
+// After JC fills fields, attach blur listener to each filled element.
+// If user edits the value, save correction to chrome.storage.sync learned_fields.
 function listenForCorrections(filledEls) {
   const seen = new WeakSet();
   for (const el of filledEls) {
@@ -423,6 +447,7 @@ function listenForCorrections(filledEls) {
 }
 
 // Save a learned correction to storage
+// Save {fieldName: correctedValue} to chrome.storage.sync learned_fields object (merged, not overwritten)
 async function saveLearnedCorrection(fieldName, value) {
   try {
     const result = await chrome.storage.sync.get('learned_fields');
@@ -437,6 +462,8 @@ async function saveLearnedCorrection(fieldName, value) {
 // Watch ALL form changes — learns from user interactions even on non-JC-filled fields
 // Covers radio buttons, checkboxes, text inputs, selects
 let formWatchInitialized = false;
+// Attach change + blur listeners on document to detect user edits to radios, checkboxes, selects, text inputs.
+// Saves corrections to learned_fields. Only activates once (formWatchInitialized guard).
 function watchFormChanges() {
   if (formWatchInitialized) return;
   formWatchInitialized = true;
@@ -498,6 +525,8 @@ function watchFormChanges() {
 }
 
 // Fill radio buttons from learned corrections (application questions)
+// For each radio group on page: check if learned_fields has a saved answer for that question,
+// find the matching radio option, set checked=true, dispatch change event.
 async function fillLearnedRadios() {
   try {
     const result = await chrome.storage.sync.get('learned_fields');
@@ -543,6 +572,8 @@ async function fillLearnedRadios() {
 }
 
 // Fill extra form elements: Title, Skills, Application Questions, Job alerts
+// Fill Oracle CX special elements: click Title pill "Mr." (.cx-select-pills-container[aria-label=Title]),
+// match resume skills against .skill-desired__button, answer screening questions "No", uncheck #job-alerts-checkbox.
 async function fillExtras() {
   const fillMap = await buildFillMap();
   const nameStr = (fillMap.name || '').trim();
@@ -616,6 +647,361 @@ async function fillExtras() {
 }
 
 // Clear all form fields on the page
+
+
+// Read resume_full_data.rawSections from storage, click Add Experience/Add Education for each entry,
+// fill fields via fillSingleSection(), fill dates via fillDateCombo(), click Save.
+async function fillProfileSections() {
+  const profile = await chrome.storage.sync.get('resume_full_data');
+  if (!profile.resume_full_data) {
+    console.log('JC: No resume_full_data found, skipping profile sections');
+    return;
+  }
+  let fullData;
+  try { fullData = JSON.parse(profile.resume_full_data); } catch(e) {
+    console.log('JC: Failed to parse resume_full_data');
+    return;
+  }
+  const sections = fullData.rawSections || {};
+  // Experience and Education entries are stored in rawSections from LLM extraction.
+  // Each entry has: company, title, start_date, end_date, description, city, country...
+  let totalFilled = 0;
+
+  // ── Experience ──────────────────────────────────────────────────────
+  if (sections.experience && Array.isArray(sections.experience) && sections.experience.length > 0) {
+  // For each experience entry, opens the "Add Experience" dialog, fills fields,
+  // and clicks Save. Repeats for all entries in the resume.
+    console.log('JC: Filling ' + sections.experience.length + ' experience entr' + (sections.experience.length === 1 ? 'y' : 'ies'));
+    for (const entry of sections.experience) {
+      if (await fillSingleSection(entry, 'Experience')) totalFilled++;
+    }
+  }
+
+  // ── Education ───────────────────────────────────────────────────────
+  if (sections.education && Array.isArray(sections.education) && sections.education.length > 0) {
+  // Same flow as experience but for education entries.
+  // Uses fieldMapping with end_date → dateAchieved for Oracle CX inline education.
+    console.log('JC: Filling ' + sections.education.length + ' education entr' + (sections.education.length === 1 ? 'y' : 'ies'));
+    for (const entry of sections.education) {
+      if (await fillSingleSection(entry, 'Education')) totalFilled++;
+    }
+  }
+
+  if (totalFilled > 0) {
+    showStatus('Filled ' + totalFilled + ' section entr' + (totalFilled === 1 ? 'y' : 'ies') + ' from resume', 'success');
+  }
+}
+
+
+// Returns true if Oracle CX inline education fields [name=description] are visible without Add button
+function isOracleEducationInline() {
+  return !!document.querySelector('[name="description"], [id^="month-dateAchieved"]');
+}
+
+
+// For one entry: click Add button or detect inline form, map LLM fields to Oracle input names,
+// fill each via FormDetector.fillField(), fill dates, toggle checkboxes, click Save
+async function fillSingleSection(entry, sectionType) {
+  // Fills one experience or education entry in the Oracle CX dialog.
+  //
+  // FLOW:
+  //   1. Check if form is already open (isSectionFormOpen). If not, find and click "Add Xxx".
+  //   2. Build field mapping: LLM key → Oracle form field name (e.g., company → employerName)
+  //   3. For each mapped field: find the DOM element, call FormDetector.fillField()
+  //   4. Fill date combo fields (month/year dropdowns via fillDateCombo)
+  //   5. Toggle checkboxes (Current Job, Graduated)
+  //   6. Click Save button to persist the entry
+  //
+  // EDGE CASE: Oracle CX inline education (no "Add Education" popup).
+  //   Detected by isOracleEducationInline() which checks for [name="description"] fields.
+  //   In this case, we skip the Add button click and fill the visible inline fields directly.
+  // 1. Check if form fields are already visible (inline form already open)
+  const formAlreadyOpen = isSectionFormOpen(sectionType);
+  if (!formAlreadyOpen) {
+    // Find and click the "Add Xxx" button to open the form
+    const addBtn = findSectionAddButton(sectionType);
+    if (!addBtn) {
+      // Oracle CX inline pattern: fields may be visible without Add button
+      if (sectionType === 'Education' && isOracleEducationInline()) {
+        console.log('JC: Education inline fields detected (Oracle CX pattern)');
+      } else {
+        console.log('JC: No "Add ' + sectionType + '" button found');
+        return false;
+      }
+    } else {
+      addBtn.click();
+      await new Promise(r => setTimeout(r, 1200)); // Wait for form to appear
+    }
+  }
+
+  // 2. Build field map: LLM key → Oracle form field name
+  let fieldMapping;
+  if (sectionType === 'Experience') {
+    fieldMapping = {
+      company: 'employerName',
+      employer: 'employerName',
+      title: 'jobTitle',
+      job_title: 'jobTitle',
+      city: 'employerCity',
+      country: 'countryCode',
+      employer_city: 'employerCity',
+      employer_country: 'countryCode',
+      description: 'responsibilities',
+    };
+  } else {
+    fieldMapping = {
+      school: 'educationalEstablishment',
+      institution: 'educationalEstablishment',
+      degree: 'contentItemId',
+      field: 'major',
+      field_of_study: 'major',
+      major: 'major',
+      grade: 'educationLevel',
+      education_level: 'educationLevel',
+      country: 'countryCode',
+      minor: 'minor',
+      // Oracle CX inline fields (visible without Add button)
+      description: 'description',
+      // Map end_date → dateAchieved for education (Oracle CX uses dateAchieved)
+      end_date: 'dateAchieved',
+    };
+  }
+
+  // 3. Fill each mapped field
+  let filledCount = 0;
+  for (const [llmKey, formName] of Object.entries(fieldMapping)) {
+    const value = entry[llmKey];
+    if (!value || typeof value !== 'string' || !value.trim()) continue;
+    const fieldObj = buildFieldObj(formName);
+    if (!fieldObj) continue;
+    const ok = await FormDetector.fillField(fieldObj, value.trim());
+    if (ok) filledCount++;
+  }
+
+  // 4. Fill dates (month/year combo fields)
+  if (sectionType === 'Education') {
+    // Oracle CX uses dateAchieved for education (single completion date)
+    const dateVal = entry.end_date || entry.start_date || '';
+    if (dateVal) {
+      const parts = parseDateParts(dateVal);
+      if (parts.month) await fillDateCombo('dateAchieved', 'month', parts.month);
+      if (parts.day) await fillDateCombo('dateAchieved', 'day', parts.day);
+      if (parts.year) await fillDateCombo('dateAchieved', 'year', parts.year);
+    }
+  } else {
+    if (entry.start_date) {
+      const parts = parseDateParts(entry.start_date);
+      if (parts.month) await fillDateCombo('startDate', 'month', parts.month);
+      if (parts.year) await fillDateCombo('startDate', 'year', parts.year);
+    }
+    if (entry.end_date) {
+      const parts = parseDateParts(entry.end_date);
+      if (parts.month) await fillDateCombo('endDate', 'month', parts.month);
+      if (parts.year) await fillDateCombo('endDate', 'year', parts.year);
+    }
+  }
+
+  // 5. Handle section-specific checkboxes
+  if (sectionType === 'Experience') {
+    if (entry.is_current || entry.current) {
+      await toggleCheckboxByLabel('Current Job', true);
+    }
+  } else {
+    if (entry.graduated || entry.is_graduated) {
+      await toggleCheckboxByLabel('Graduated', true);
+    }
+  }
+
+  // 6. Click the save/confirm button ("Add Experience" / "Add Education")
+  await new Promise(r => setTimeout(r, 600));
+  const saveBtn = findDialogSaveButton(sectionType, addBtn); // The same text serves as confirm too
+  if (saveBtn && saveBtn !== addBtn) {
+    saveBtn.click();
+    console.log('JC: Saved ' + sectionType + ' entry');
+    await new Promise(r => setTimeout(r, 1500));
+    return true;
+  }
+  // Fallback: try clicking any visible "Add Experience"/"Add Education" button
+  const allBtns = document.querySelectorAll('button');
+  for (const b of allBtns) {
+    if (b.textContent.trim() === 'Add ' + sectionType && (b.offsetHeight > 0 || b.offsetParent !== null)) {
+      if (b !== addBtn) {
+        b.click();
+        console.log('JC: Saved ' + sectionType + ' entry (found by text)');
+        await new Promise(r => setTimeout(r, 1500));
+        return true;
+      }
+    }
+  }
+  console.log('JC: Could not find save button for ' + sectionType + ', fields may be filled but not saved');
+  return filledCount > 0;
+}
+
+
+// Find Add button by id^=profileItemsAddButton- or textContent="Add Experience"/"Add Education"
+function findSectionAddButton(sectionType) {
+  // Priority 1: visible button with section ID pattern (profileItemsAddButton-*)
+  const allBtns = document.querySelectorAll('button');
+  for (const b of allBtns) {
+    if ((b.offsetHeight > 0 || b.offsetParent !== null) && b.id && b.id.startsWith('profileItemsAddButton-')) {
+      return b;
+    }
+  }
+  // Priority 2: visible button with matching text, EXCLUDING save-buttons
+  for (const b of allBtns) {
+    const text = b.textContent.trim();
+    const cls = (b.className || '').toLowerCase();
+    if (text === 'Add ' + sectionType && (b.offsetHeight > 0 || b.offsetParent !== null) && !cls.includes('save-btn')) {
+      return b;
+    }
+  }
+  return null;
+}
+
+
+// Find Save button inside Add dialog (checks class=save-btn, then textContent match)
+function findDialogSaveButton(sectionType, sectionAddBtn) {
+  const allBtns = document.querySelectorAll('button');
+  // Priority 1: find save-btn with matching text (case insensitive)
+  for (const b of allBtns) {
+    const text = b.textContent.trim();
+    const cls = (b.className || '').toLowerCase();
+    const textLower = text.toLowerCase();
+    const expectedLower = ('Add ' + sectionType).toLowerCase();
+    if (textLower === expectedLower && (b.offsetHeight > 0 || b.offsetParent !== null) && cls.includes('save-btn')) {
+      return b;
+    }
+  }
+  // Priority 2: any visible button with matching text, different from add button
+  for (const b of allBtns) {
+    const text = b.textContent.trim();
+    const textLower = text.toLowerCase();
+    const expectedLower = ('Add ' + sectionType).toLowerCase();
+    if (textLower === expectedLower && b !== sectionAddBtn && (b.offsetHeight > 0 || b.offsetParent !== null)) {
+      return b;
+    }
+  }
+  // Priority 3: any visible save-btn button with matching text (same as add btn if only one)
+  for (const b of allBtns) {
+    const text = b.textContent.trim().toLowerCase();
+    const expectedLower = ('Add ' + sectionType).toLowerCase();
+    if (text === expectedLower && (b.offsetHeight > 0 || b.offsetParent !== null)) {
+      return b;
+    }
+  }
+  return null;
+}
+
+
+// Check if modal form fields (employerName, jobTitle, etc.) are already visible
+function isSectionFormOpen(sectionType) {
+  // Check for key form fields that are visible on the page
+  const fieldIds = sectionType === 'Experience'
+    ? ['employerName', 'jobTitle', 'responsibilities']
+    : ['educationalEstablishment', 'contentItemId', 'major'];
+  for (const name of fieldIds) {
+    const el = document.querySelector('[name="' + name + '"]');
+    if (el && (el.offsetHeight > 0 || el.offsetParent !== null)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+// Build {el, name, label, isRequired, rect} from Oracle input[name=...] for FormDetector.fillField
+function buildFieldObj(formName) {
+  const el = document.querySelector('[name="' + formName + '"]');
+  if (!el) return null;
+  // Check for the toggle button (Oracle combobox pattern)
+  const toggleId = el.id + '-toggle-button';
+  const hasToggle = !!document.getElementById(toggleId);
+  return {
+    el: el,
+    name: formName,
+    label: (el.labels?.[0]?.textContent || el.getAttribute('aria-label') || formName).trim(),
+    isRequired: el.hasAttribute('required') || el.getAttribute('aria-required') === 'true',
+    rect: el.getBoundingClientRect(),
+    identifiers: formName,
+    _isOracle: hasToggle,
+  };
+}
+
+
+// Find Oracle month/year combobox by [id^=month-{field}] or [id^=year-{field}], fill value
+async function fillDateCombo(dateField, part, value) {
+  const prefix = part === 'month' ? 'month' : 'year';
+  // Find the input by partial ID: id^="month-startDate" or id^="year-endDate"
+  const el = document.querySelector('[id^="' + prefix + '-' + dateField + '"]');
+  if (!el) return;
+  const toggleId = el.id + '-toggle-button';
+  const hasToggle = !!document.getElementById(toggleId);
+  const fieldObj = {
+    el: el,
+    name: dateField + '_' + part,
+    label: part,
+    isRequired: false,
+    rect: el.getBoundingClientRect(),
+    identifiers: dateField + ' ' + part,
+    _isOracle: hasToggle,
+  };
+  await FormDetector.fillField(fieldObj, value);
+}
+
+
+// Find <label> by textContent, locate checkbox, set checked, dispatch change
+async function toggleCheckboxByLabel(labelText, checked) {
+  const labels = document.querySelectorAll('label');
+  for (const lbl of labels) {
+    if (lbl.textContent.trim() === labelText) {
+      const cb = lbl.querySelector('input[type="checkbox"]') || document.getElementById(lbl.getAttribute('for'));
+      if (cb) {
+        cb.checked = checked;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+
+// Parse "MM/YYYY", "Mon YYYY", or "YYYY" into {month, day, year}. Months use short names (Mar, Oct).
+function parseDateParts(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return {};
+  const result = {};
+  // Month names array for Oracle CX compatibility
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  // Format: "MM/YYYY" or "M/YYYY"
+  const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const numMonth = parseInt(slashMatch[1]);
+    result.month = monthNames[numMonth - 1] || String(numMonth); // "Mar" not "3"
+    result.year = slashMatch[2];
+    return result;
+  }
+  // Try "MonthName YYYY" (e.g. "March 2024", "Mar 2024")
+  const months = {jan:'1',feb:'2',mar:'3',apr:'4',may:'5',jun:'6',jul:'7',aug:'8',sep:'9',oct:'10',nov:'11',dec:'12'};
+  const namedMatch = dateStr.match(/^([a-z]{3,})\s*(\d{4})$/i);
+  if (namedMatch) {
+    const shortMonth = namedMatch[1].toLowerCase().substring(0, 3);
+    if (months[shortMonth]) {
+      result.month = namedMatch[1]; // Pass through original month name
+      result.year = namedMatch[2];
+      return result;
+    }
+  }
+  // Just a year
+  const yearMatch = dateStr.match(/^(\d{4})$/);
+  if (yearMatch) {
+    result.year = yearMatch[1];
+  }
+  return result;
+}
+
+
 function clearForm() {
   if (!confirm('Clear all fields on this form? This cannot be undone.')) return;
   
@@ -712,6 +1098,7 @@ function clearForm() {
   setTimeout(() => { skipAutoFill = false; }, 3000);
 }
 
+// Query DOM with 10 selectors for job description containers, return first result with >200 chars (truncated to 4000)
 function extractJobDescription() {
   // Try common JD containers
   const selectors = [
@@ -738,6 +1125,8 @@ function extractJobDescription() {
   return (meta?.content || document.title || '');
 }
 
+// 2s after load: for each custom-question textarea, inject a 28x28 blue sparkle button at bottom-right.
+// On click: calls LLMClient.generateAnswer(question, jobDesc, resume). Skips if already wrapped (dataset.jcInjected).
 function injectAIAssistButtons() {
   setTimeout(function() {
     const fields = FormDetector.detect();
@@ -777,6 +1166,7 @@ function injectAIAssistButtons() {
   }, 2000);
 }
 
+// Set #jc-status-msg textContent + class (success/info/error), auto-clear after 5s
 function showStatus(msg, type) {
   const el = document.getElementById('jc-status-msg');
   if (!el) return;
@@ -786,6 +1176,7 @@ function showStatus(msg, type) {
 }
 
 // Make the status message clickable to open extension settings
+// Add click handler to #jc-status-msg that sends jc_open_options message to background.js (opens settings page)
 function makeStatusClickable() {
   const el = document.getElementById('jc-status-msg');
   if (!el) return;
@@ -804,6 +1195,7 @@ function makeStatusClickable() {
 }
 
 // --- Saved Answers Bank ---
+// Save {question, answer, date} to chrome.storage.sync saved_answers array (max 50, deduped by question text)
 async function saveAnswer(question, answer) {
   if (!question || !answer) return;
   const result = await chrome.storage.sync.get("saved_answers");
