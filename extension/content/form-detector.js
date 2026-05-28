@@ -353,8 +353,14 @@ const FormDetector = {
   },
 
   // ── Step 6a: Native <select> filling ───────────────────────────
-  // Tries four matching strategies against the dropdown's options:
-  // exact text, starts-with, word-boundary regex, substring.
+  // A native <select> is a standard HTML dropdown. It has a fixed list of
+  // <option> elements. Oracle uses these for some fields (e.g., country).
+  // The value we have (e.g., "Poland") might not exactly match the option
+  // text (e.g., "Poland" vs "Poland (+48)"). So we try four strategies:
+  //   Phase 1: exact text match
+  //   Phase 2: starts-with match
+  //   Phase 3: word-boundary regex match
+  //   Phase 4: substring match
   fillSelect(el, value) {
     const options = Array.from(el.options).filter(o => o.value !== '');
     const lowerValue = value.toLowerCase().trim();
@@ -399,11 +405,24 @@ const FormDetector = {
   },
 
   // ── Step 7: Text input filling ──────────────────────────────────
+  // Takes a text input element, its field metadata, and a target value.
   // Tries up to four strategies in order. First success wins.
-  // Strategy 1: set el.value directly + dispatch events. Works on plain inputs.
-  // Strategy 2: use HTMLInputElement.prototype.value setter to bypass React/Vue.
-  // Strategy 3: (Oracle only) type character by character with input events.
-  // Strategy 4: (Oracle only) dispatch InputEvent(insertText) per character.
+  //
+  // Strategy 1: Direct DOM assignment. Set el.value = "shivam@example.com"
+  //   and dispatch input/change events. For most plain inputs, this works.
+  //
+  // Strategy 2: Native prototype setter. Modern frameworks (React, Vue,
+  //   Angular) intercept el.value assignments. This uses the browser's
+  //   original HTMLInputElement.prototype.value setter to bypass them.
+  //
+  // Strategy 3: Character-by-character typing (Oracle only). Oracle uses
+  //   Knockout.js which clears values set by strategies 1 and 2. By typing
+  //   one character at a time with input events after each, Knockout sees
+  //   each change as a human keystroke and accepts it.
+  //
+  // Strategy 4: InputEvent per-character (Oracle only). Same as strategy 3
+  //   but uses InputEvent with inputType='insertText' — a real browser-level
+  //   event that no framework can distinguish from actual keyboard input.
   async fillTextInput(el, field, value) {
     const fieldLabel = field.label || field.name || 'field';
     const isOracle = this.isOracleCXField(el);
@@ -504,13 +523,25 @@ const FormDetector = {
 };
 
 // ── Step 6b: Oracle combobox filling ──────────────────────────────
-// Oracle CX uses Knockout.js which actively rejects synthetic JS events.
-// Setting el.value = "Poland" works for a moment but Knockout clears it
-// asynchronously. Four strategies are tried in order:
-//   1. Click combobox → find dropdown option → click it
-//   2. Native setter + Enter + 300ms verify (Knockout may clear after)
-//   3. Character-by-character typing (Knockout sees each char as human input)
-//   4. InputEvent per-character (real browser event, no framework can filter it)
+// An Oracle combobox is NOT a native <select>. It's a text input that
+// Oracle's JavaScript turns into a dropdown. When you type in it, Oracle's
+// code shows matching options. When you click an option, Oracle's code
+// sets the value. These comboboxes use Knockout.js — a JavaScript framework
+// that wraps input values in "observables" (reactive variables). Knockout
+// actively monitors the input and clears any value that wasn't set through
+// its own API. This is why strategies 1 and 2 from fillTextInput often fail.
+//
+// Four strategies are tried in order:
+//   1. Click the combobox to open the dropdown, find the matching option
+//      by text, click it. Works if Knockout renders the dropdown synchronously.
+//   2. Set the value via native setter, dispatch Enter key, wait 300ms.
+//      Knockout may accept it or may clear it asynchronously.
+//   3. Type character by character, 30ms apart, with input events after each.
+//      Knockout sees each character as a human keystroke and updates its
+//      observable. Works on most Oracle CX comboboxes.
+//   4. Same as 3 but uses InputEvent with inputType='insertText'. This is a
+//      real browser event that represents actual text insertion — no framework
+//      can distinguish it from a human typing on a physical keyboard.
 // STRATEGIES (tried in order, first success wins):
 //   1. DOM click → find dropdown option → click it
 //   2. Native value setter + Enter + 300ms async verification

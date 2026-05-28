@@ -3,22 +3,34 @@
 // ═══════════════════════════════════════════════════════════════
 //
 // FILE ROLE:
-//   This file talks to your LLM endpoint. It formats prompts, sends HTTP
-//   requests, and parses responses. It handles both regular models (which
-//   return content) and reasoning models (which return reasoning_content).
+//   This file talks to your LLM endpoint. An LLM endpoint is a web server
+//   that accepts text prompts and returns generated text responses — like
+//   ChatGPT but accessed via an API. The endpoint can be OpenAI's servers,
+//   a local model running on your machine, or any OpenAI-compatible service.
+//
+//   This file handles two things:
+//   1. Formatting: it takes a question, job description, and resume text,
+//      and wraps them into the message format the LLM API expects.
+//   2. Communication: it sends HTTP POST requests to the endpoint and
+//      parses the response. It handles both regular models (which return
+//      their answer in a "content" field) and reasoning models like DeepSeek
+//      (which return their answer in a "reasoning_content" field).
 //
 // WHY THIS FILE EXISTS SEPARATELY:
-//   The options page needs to call the LLM to test the connection and to
-//   extract profiles from resume text. The content script needs it to
-//   answer application questions. If LLM logic lived in content.js, the
-//   options page would have to duplicate it. This file is shared by both.
+//   Two different parts of the extension need to call the LLM:
+//   - The options page calls it to test the connection ("is my API key valid?")
+//     and to extract profile data from resume text.
+//   - The content script calls it to generate answers for application questions.
+//   If LLM logic lived in content.js, the options page would have to duplicate
+//   it. This shared file avoids that.
 //
-// STEP 10 IN THE EXECUTION TRACE:
-//   generateAnswer(question, jobDescription, resumeText) is called by
-//   content.js fillAIQuestions(). It formats a chat completion request
-//   with a system prompt ("answer this question using the resume and JD")
-//   and a user message containing the question, JD, and resume text.
-//   POSTs to the configured endpoint. Returns the answer string.
+// HOW IT'S USED IN THE FILL ALL TRACE (Step 10):
+//   content.js fillAIQuestions() calls LLMClient.generateAnswer(question, jd, resumeText).
+//   generateAnswer() formats a "chat completion" request — a structured message
+//   with a system role (instructions) and a user role (the actual question).
+//   It POSTs this to the configured endpoint. The endpoint returns a JSON
+//   response with the generated answer. generateAnswer() extracts and returns
+//   just the answer text.
 // ═══════════════════════════════════════════════════════════════
 
 const LLMClient = {

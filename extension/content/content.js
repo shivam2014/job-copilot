@@ -168,6 +168,9 @@ function createPanel() {
     window.__jcFilling = false;
   };
 
+  // TRIGGER: user clicks "Clear All" in the panel.
+  // Sets the same guard as Fill All (the clear operation modifies the DOM),
+  // runs clearForm() which removes all values from the form, then releases the guard.
   jcPanel.querySelector('#jc-clear-form').onclick = () => {
     window.__jcFilling = true;
     clearForm();
@@ -204,9 +207,15 @@ function updatePanel() {
   `;
 }
 
-// ── Per-Field Fill Buttons ─────────────────────────────────────────
-// Small "F" button next to each detected field.
-// Text input → fill from profile. Textarea → call LLM. Select → fill from profile.
+// ── Per-Field "F" Buttons ─────────────────────────────────────────
+// When the page loads or Oracle re-renders a section, this function wraps
+// each detected field with a small "F" button that appears on hover.
+// Each button is bound to the specific field object that detect() returned.
+// Clicking it calls fillSingleField(field) which fills just that one field.
+//
+// This exists so you can fill individual fields without running Fill All.
+// Maybe you only want the name and email filled, not the AI questions.
+// Maybe you want to re-fill one field you cleared.
 function injectPerFieldButtons() {
   const fields = FormDetector.detect();
   const allFields = [...fields.personal, ...fields.questions, ...fields.selects];
@@ -523,6 +532,9 @@ async function buildFillMap() {
   };
 }
 
+// Guard: skip filling a field if the value doesn't match the field type.
+// For example, don't put a phone number into a URL field, don't put a full
+// address into a city field. Returns true to skip, false to proceed.
 function skipFieldForType(field, value) {
   if (field.el.type === 'url' && !value.startsWith('http')) return true;
   if (field.el.type === 'url' && /^[\d\s\-+()]{6,}$/.test(value)) return true;
@@ -533,12 +545,25 @@ function skipFieldForType(field, value) {
   return false;
 }
 
-// ── Learning (Step 8) ──────────────────────────────────────────────
-// After filling fields, attach a one-time blur listener to each element.
-// If you edit the value and leave the field, the listener compares the
-// new value against what JC filled. If different, it saves the correction
-// to learned_fields in storage. Next session, buildFillMap() (Step 4)
-// merges these corrections over your profile defaults.
+// ── Learning System ────────────────────────────────��──────────────
+// The extension learns from you in two ways:
+//
+// PATH 1 (this function): JC fills a field, you edit it afterward.
+// After Fill All or a per-field fill, this function attaches a one-time
+// blur listener to each filled element. "Blur" means leaving the field —
+// clicking into it, changing the value, then clicking somewhere else.
+// The listener compares the new value against what JC set (stored in
+// el.dataset.jcValue). If different, it calls saveLearnedCorrection()
+// which writes to learned_fields in Chrome storage.
+//
+// PATH 2 (MutationObserver, bottom of file): You fill a field that JC
+// didn't touch. The observer watches for changes to form elements and
+// saves user-initiated edits to learned_fields.
+//
+// Both paths write to the same place: learned_fields in Chrome storage,
+// which is a flat key-value object. Next session, buildFillMap() (Step 4)
+// reads your profile fields first, then reads learned_fields and merges
+// them on top. Corrections always win over defaults.
 function listenForCorrections(filledEls) {
   const seen = new WeakSet();
   for (const el of filledEls) {
@@ -563,6 +588,9 @@ function listenForCorrections(filledEls) {
   }
 }
 
+// Writes one correction to learned_fields in Chrome storage.
+// learned_fields is a flat key-value object: {"email": "new@example.com", ...}
+// The key is the field name (or id), the value is what you corrected it to.
 async function saveLearnedCorrection(fieldName, value) {
   try {
     const result = await chrome.storage.sync.get('learned_fields');
@@ -576,12 +604,21 @@ async function saveLearnedCorrection(fieldName, value) {
 
 // ── Clear Form ─────────────────────────────────────────────────────
 
+// TRIGGER: user clicks "Clear All" (see createPanel above).
+// This function does NOT touch Chrome storage — it only clears the form on
+// the page. Your profile, resume data, learned corrections, and saved answers
+// all stay intact. If you click Fill All again after clearing, the same data
+// gets filled back in.
+//
+// Oracle's form has seven different kinds of clearable elements, each
+// requiring a different approach. This function handles all seven in sequence.
 function clearForm() {
   if (!confirm('Clear all fields on this form? This cannot be undone.')) return;
 
   let cleared = 0;
 
-  // 1. Remove value buttons (combo fields)
+  // 1. Oracle combobox "Remove value" buttons — the small X icons on
+  //    combobox fields like country, phone code. Found by the title attribute.
   const removeBtns = document.querySelectorAll('button[title*="Remove value"]');
   for (const btn of removeBtns) {
     if (btn.offsetHeight > 0 || btn.offsetParent !== null) {
@@ -589,13 +626,19 @@ function clearForm() {
     }
   }
 
-  // 2. Delete buttons on profile tiles
+  // 2. Profile tile delete buttons — the experience and education cards
+  //    that Oracle imports from your profile. Each card has a Delete button.
   const deleteBtns = document.querySelectorAll('button[title="Delete"], button[aria-label="Delete"]');
   for (const btn of deleteBtns) {
     try { btn.click(); cleared++; } catch(e) {}
   }
 
-  // 3. Clear all inputs
+  // 3. All text inputs, textareas, selects, radios, and checkboxes.
+  //    For radios/checkboxes: uncheck. For selects: reset to first option.
+  //    For text inputs: set value to empty using the native prototype setter
+  //    (to bypass any framework interceptors), dispatch input/change events,
+  //    and blur the field. Also removes the jcFilled and jcValue data
+  //    attributes that the learning system uses to track what JC filled.
   const inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="file"]), textarea, select, [role="combobox"]');
   for (const el of inputs) {
     if (el.hasAttribute('readonly')) el.removeAttribute('readonly');
@@ -625,7 +668,8 @@ function clearForm() {
     delete el.dataset.jcValue;
   }
 
-  // 4. Oracle pill selects
+  // 4. Oracle's custom pill-shaped buttons — used for skills, languages,
+  //    title selection (Mr./Ms.). Each pill is a clickable button.
   const pills = document.querySelectorAll('.cx-select-pill-section');
   for (const pill of pills) {
     if (pill.offsetHeight > 0 && pill.offsetParent !== null) {
@@ -633,7 +677,8 @@ function clearForm() {
     }
   }
 
-  // 5. Oracle combobox inputs
+  // 5. Oracle's custom combobox text inputs — the editable part of
+  //    Oracle-style dropdowns where you type to search for options.
   const comboInputs = document.querySelectorAll('.cx-select-input');
   for (const el of comboInputs) {
     if (el.offsetHeight > 0 && el.offsetParent !== null) {
@@ -643,7 +688,8 @@ function clearForm() {
     }
   }
 
-  // 6. Profile tiles
+  // 6. Profile-imported tiles — experience, education, and other cards
+  //    that Oracle pulled from your profile. Each has internal Delete buttons.
   const profileItems = document.querySelectorAll('.apply-flow-profile-item-tile');
   for (const item of profileItems) {
     const allBtns = item.querySelectorAll('button');
@@ -656,7 +702,8 @@ function clearForm() {
     }
   }
 
-  // 7. Job alerts checkbox
+  // 7. The "Send me job alerts" checkbox — a standalone checkbox that
+  //    isn't part of the application fields but should be cleared too.
   const alertCb = document.getElementById('job-alerts-checkbox');
   if (alertCb && alertCb.checked) {
     alertCb.checked = false;
@@ -668,7 +715,11 @@ function clearForm() {
   console.log('JC: Cleared ' + cleared + ' form field(s)');
 }
 
-// ── Job Description Extraction ─────────────────────────────────────
+// ── Job Description Extraction ─────────────────────────────────
+// The LLM needs the job description as context to answer questions well.
+// This function searches the page for the most likely container element
+// using common CSS class patterns. Returns the first match with >200 chars,
+// truncated to 4000 chars (to stay within LLM context limits).
 
 function extractJobDescription() {
   const selectors = [
@@ -693,7 +744,11 @@ function extractJobDescription() {
   return (meta?.content || document.title || '');
 }
 
-// ── Status Messages ────────────────────────────────────────────────
+// ── Status Messages ─────────────────────────────────────────────
+// Shows a temporary message in the panel (e.g., "Filled 5 field(s)").
+// Messages auto-clear after 5 seconds. makeStatusClickable() turns the
+// message into a link that opens the extension settings page — used when
+// the error is "No resume" so the user can upload one.
 
 function showStatus(msg, type) {
   const el = document.getElementById('jc-status-msg');
@@ -720,7 +775,10 @@ function makeStatusClickable() {
   };
 }
 
-// ── Saved Answers Bank ───────────────��────────��────────────────────
+// ── Saved Answers Bank ──────────────────────────────────────────
+// When the LLM answers a question, the question-answer pair is saved here
+// (up to 50 entries). This lets the options page show your answer history
+// and could be used to pre-fill questions you've answered before.
 
 async function saveAnswer(question, answer) {
   if (!question || !answer) return;
@@ -736,7 +794,11 @@ async function saveAnswer(question, answer) {
   await chrome.storage.sync.set({ saved_answers: answers });
 }
 
-// ── Message Listener ───────────────────────────────────────────────
+// ── Message Listener ─────────────────────────────────────────────
+// The popup (popup.js) and background script (background.js) communicate
+// with this content script by sending messages. These handlers let the
+// popup trigger Fill All or Clear All remotely, and let the popup query
+// what fields are on the page.
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'jc_fill_all') {
@@ -768,21 +830,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ── SPA Observer ───────────────────────────────────────────────────
-// Watches for DOM mutations (elements added/removed). When Oracle
-// re-renders a section, this re-runs detect() (Step 2-3) and injects
-// per-field "F" buttons on new fields. Skips if __jcFilling is active
-// (Step 1 guard) to avoid interfering with fill operations.
+// ── MutationObserver ─────────────────────────────────────────────
+// A MutationObserver is a browser API that lets JavaScript watch the page
+// for changes. Every time any HTML element is added, removed, or modified
+// anywhere on the page, this observer fires. We use it because Oracle's
+// SPA can re-render sections at any time — adding new fields, removing
+// old ones — without a full page reload. When that happens, we need to
+// re-detect fields and re-inject per-field "F" buttons on the new elements.
+//
+// The observer is debounced (waits 2 seconds after the last change before
+// acting) because Oracle often makes many rapid DOM changes during a
+// single transition, and we only want to react once they're done.
+//
+// It checks __jcFilling to avoid interfering with an active fill operation.
+// If filling is in progress, the observer returns early and does nothing.
 let detectTimeout = null;
 const observer = new MutationObserver(function() {
+  // Debounce: clear any pending timeout, start a new 2-second timer.
+  // This ensures we only react once Oracle finishes making rapid changes.
   clearTimeout(detectTimeout);
   detectTimeout = setTimeout(function() {
+    // If a fill or clear operation is running, don't interfere.
     if (window.__jcFilling) return;
 
+    // Re-detect fields — Oracle may have added or removed elements.
     const fields = FormDetector.detect();
     const total = fields.personal.length + fields.questions.length + fields.selects.length;
-    if (total === 0) return;
+    if (total === 0) return;  // no fields found, nothing to do
 
+    // If the panel isn't open, just inject buttons on the new fields.
+    // If the panel IS open, update the field counts in the stats display.
     const panel = document.getElementById('jc-panel');
     if (!panel || !panel.classList.contains('open')) {
       if (!document.getElementById('jc-float-btn')) {

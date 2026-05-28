@@ -57,6 +57,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
   fileInput.onchange = (e) => { if (e.target.files[0]) handlePDF(e.target.files[0]); };
 
+  // ── Resume Upload Flow ──────────────────────────────────────
+  // TRIGGER: user drops or selects a PDF file on the settings page.
+  //
+  // Step 1: Read the file as raw bytes (an ArrayBuffer).
+  // Step 2: Call extractTextFromPDF() from pdf-extract.js, which uses the
+  //   pdf.js library to parse the PDF's internal structure and extract the
+  //   raw text content from every page, plus any hyperlinks.
+  // Step 3: Send the raw text to the LLM via runExtraction(). The LLM
+  //   reads the resume and returns structured JSON: name, email, phone,
+  //   address, work_authorization, plus arrays of experience, education,
+  //   skills, projects, languages.
+  // Step 4: The structured data gets saved to Chrome storage as
+  //   resume_full_data — a JSON blob. Individual profile fields (name,
+  //   email, etc.) are also written to the settings page inputs and
+  //   auto-saved to storage.
+  //
+  // Later, when you click Fill All on a job page:
+  //   - buildFillMap() reads the profile fields (profile_name, profile_email, etc.)
+  //   - getResumeText() reads resume_full_data and reconstructs it as plain
+  //     text for the LLM to use as context when answering questions.
   async function handlePDF(file) {
     if (!file.name.endsWith('.pdf')) {
       showUploadStatus('Please upload a PDF file', 'error');
@@ -292,6 +312,8 @@ console.log('JC DEBUG jsonStr length:', jsonStr.length);
   }
 
   // --- Extract Profile button ---
+  // TRIGGER: user pastes resume text manually and clicks "Extract Profile".
+  // Same as handlePDF but skips the PDF parsing step — goes straight to LLM extraction.
   document.getElementById('extract-btn').onclick = async () => {
     const text = document.getElementById('resume_text').value.trim();
     if (!text) { setExtractStatus('Upload a PDF or paste resume text first', 'error'); return; }
