@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Copilot — Visual Architecture</title>
+<style>
+  :root {
+    --bg: #FAF9F5;
+    --fg: #141413;
+    --blue: #3b82f6;
+    --blue-light: rgba(59,130,246,0.10);
+    --green: #10b981;
+    --green-light: rgba(16,185,129,0.10);
+    --red: #ef4444;
+    --red-light: rgba(239,68,68,0.10);
+    --orange: #f59e0b;
+    --orange-light: rgba(245,158,11,0.10);
+    --purple: #8b5cf6;
+    --purple-light: rgba(139,92,246,0.10);
+    --gray-150: #F0EEE6;
+    --gray-300: #D1CFC5;
+    --gray-500: #87867F;
+    --gray-700: #3D3D3A;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--sans); padding: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 600; margin-bottom: 6px; }
+  .subtitle { font-size: 14px; color: var(--gray-500); margin-bottom: 24px; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 8px 16px; border: 1.5px solid var(--gray-300); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; background: #fff; transition: all 0.15s; }
+  .tab:hover { border-color: var(--blue); }
+  .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .diagram { display: none; }
+  .diagram.active { display: block; }
+
+  /* layout */
+  .layout { display: grid; grid-template-columns: 1fr 280px; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* canvas */
+  .canvas { border: 1.5px solid var(--gray-300); border-radius: 12px; background: #fff; padding: 20px; overflow-x: auto; }
+  svg.flow { display: block; width: 100%; height: auto; }
+  .flow text { font-family: var(--mono); font-size: 11px; fill: var(--fg); pointer-events: none; }
+  .flow .sub { font-size: 9px; fill: var(--gray-500); }
+  .flow .lbl { font-size: 9px; fill: var(--gray-500); }
+
+  /* nodes */
+  .node { cursor: pointer; transition: transform 120ms ease; }
+  .node:hover { transform: translateY(-1px); }
+  .node rect { fill: #fff; stroke: var(--gray-300); stroke-width: 1.5; rx: 6; }
+  .node.start rect { fill: var(--blue-light); stroke: var(--blue); }
+  .node.end rect { fill: var(--green-light); stroke: var(--green); }
+  .node.warn rect { fill: var(--orange-light); stroke: var(--orange); }
+  .node.error rect { fill: var(--red-light); stroke: var(--red); }
+  .node.storage rect { fill: var(--purple-light); stroke: var(--purple); rx: 4; }
+  .node.active rect { stroke: var(--blue); stroke-width: 2.5; }
+  .edge { stroke: var(--gray-500); stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+  .edge.blue { stroke: var(--blue); }
+  .edge.green { stroke: var(--green); }
+  .edge.red { stroke: var(--red); stroke-dasharray: 4 3; }
+  .edge.purple { stroke: var(--purple); stroke-dasharray: 6 3; }
+
+  /* side panel */
+  aside { position: sticky; top: 24px; border: 1.5px solid var(--gray-300); border-radius: 12px; background: #fff; padding: 16px; }
+  aside .hint { font-size: 11px; color: var(--gray-500); margin-bottom: 10px; }
+  aside h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  aside .meta { font-family: var(--mono); font-size: 10px; color: var(--gray-500); margin-bottom: 10px; }
+  aside p { font-size: 13px; line-height: 1.55; color: var(--gray-700); margin-bottom: 10px; }
+  aside pre { font-family: var(--mono); font-size: 10.5px; line-height: 1.5; background: var(--gray-150); border: 1px solid var(--gray-300); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; font-size: 11px; color: var(--gray-700); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .chip { width: 18px; height: 12px; border: 1.5px solid var(--gray-300); border-radius: 3px; background: #fff; }
+  .chip.blue { background: var(--blue-light); border-color: var(--blue); }
+  .chip.green { background: var(--green-light); border-color: var(--green); }
+  .chip.red { background: var(--red-light); border-color: var(--red); }
+  .chip.purple { background: var(--purple-light); border-color: var(--purple); }
+  .chip.orange { background: var(--orange-light); border-color: var(--orange); }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Job Copilot — Visual Architecture</h1>
+  <p class="subtitle">Click any box to see what happens at that step. Four diagrams covering the full extension.</p>
+
+  <div class="tabs">
+    <div class="tab active" data-diagram="d1">1. Extension Architecture</div>
+    <div class="tab" data-diagram="d2">2. Fill All Trace</div>
+    <div class="tab" data-diagram="d3">3. Clear All Trace</div>
+    <div class="tab" data-diagram="d4">4. Resume Data Flow</div>
+  </div>
+
+  <!-- ═══════════ DIAGRAM 1: Architecture ═══════════ -->
+  <div class="diagram active" id="d1">
+    <div class="layout">
+      <div>
+        <div class="canvas">
+          <svg class="flow" viewBox="0 0 660 520">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#87867F"/></marker>
+            </defs>
+            <!-- Chrome -->
+            <g class="node start" data-k="d1-chrome"><rect x="220" y="10" width="220" height="44"/><text x="330" y="28" text-anchor="middle" font-size="12">Chrome loads page</text><text class="sub" x="330" y="42" text-anchor="middle">manifest.json tells Chrome what to inject</text></g>
+            <path class="edge" d="M330,54 L330,78"/>
+            <!-- content.js -->
+            <g class="node" data-k="d1-content"><rect x="10" y="78" width="200" height="70"/><text x="110" y="98" text-anchor="middle" font-size="12">content.js</text><text class="sub" x="110" y="112" text-anchor="middle">THE ORCHESTRATOR</text><text class="sub" x="110" y="126" text-anchor="middle">UI · lifecycle · fill logic · learning</text><text class="sub" x="110" y="138" text-anchor="middle">879 lines</text></g>
+            <!-- form-detector.js -->
+            <g class="node" data-k="d1-detector"><rect x="230" y="78" width="200" height="70"/><text x="330" y="98" text-anchor="middle" font-size="12">form-detector.js</text><text class="sub" x="330" y="112" text-anchor="middle">THE DETECTION + FILL ENGINE</text><text class="sub" x="330" y="126" text-anchor="middle">detect · identify · fill strategies</text><text class="sub" x="330" y="138" text-anchor="middle">702 lines</text></g>
+            <!-- llm-client.js -->
+            <g class="node" data-k="d1-llm"><rect x="450" y="78" width="200" height="70"/><text x="550" y="98" text-anchor="middle" font-size="12">llm-client.js</text><text class="sub" x="550" y="112" text-anchor="middle">THE API BRIDGE</text><text class="sub" x="550" y="126" text-anchor="middle">formats prompts · sends HTTP · parses</text><text class="sub" x="550" y="138" text-anchor="middle">100 lines</text></g>
+            <!-- calls from content.js -->
+            <path class="edge blue" d="M210,113 L230,113"/><text class="lbl" x="216" y="108">calls</text>
+            <!-- calls from fillAIQuestions -->
+            <path class="edge purple" d="M430,113 L450,113"/><text class="lbl" x="436" y="108">calls</text>
+            <!-- options.js -->
+            <g class="node storage" data-k="d1-options"><rect x="10" y="180" width="200" height="60"/><text x="110" y="200" text-anchor="middle" font-size="12">options.js</text><text class="sub" x="110" y="214" text-anchor="middle">Settings page · resume upload</text><text class="sub" x="110" y="228" text-anchor="middle">profile extraction · auto-save</text></g>
+            <!-- popup.js -->
+            <g class="node" data-k="d1-popup"><rect x="230" y="180" width="200" height="60"/><text x="330" y="200" text-anchor="middle" font-size="12">popup.js</text><text class="sub" x="330" y="214" text-anchor="middle">Extension popup</text><text class="sub" x="330" y="228" text-anchor="middle">Fill All · Clear All · field counts</text></g>
+            <!-- background.js -->
+            <g class="node warn" data-k="d1-bg"><rect x="450" y="180" width="200" height="60"/><text x="550" y="200" text-anchor="middle" font-size="12">background.js</text><text class="sub" x="550" y="214" text-anchor="middle">Service worker</text><text class="sub" x="550" y="228" text-anchor="middle">PDF extraction · LLM profile extraction</text></g>
+            <!-- popup → content -->
+            <path class="edge" d="M330,240 L330,148"/><text class="lbl" x="340" y="250">messages</text>
+            <!-- options → llm -->
+            <path class="edge purple" d="M210,210 L450,113"/>
+            <!-- options → storage -->
+            <g class="node storage" data-k="d1-storage"><rect x="10" y="290" width="640" height="50"/><text x="330" y="310" text-anchor="middle" font-size="12">Chrome Storage (synced across devices)</text><text class="sub" x="330" y="326" text-anchor="middle">profile_name · profile_email · profile_phone · resume_full_data · learned_fields · saved_answers · llm_base_url · llm_api_key · llm_model</text></g>
+            <!-- content ↔ storage -->
+            <path class="edge purple" d="M110,148 L110,290"/><text class="lbl" x="15" y="265">reads + writes</text>
+            <!-- form-detector → page DOM -->
+            <g class="node" data-k="d1-dom"><rect x="230" y="290" width="200" height="50"/><text x="330" y="310" text-anchor="middle" font-size="12">Page DOM</text><text class="sub" x="330" y="326" text-anchor="middle">Oracle's form fields</text></g>
+            <path class="edge" d="M330,148 L330,290"/><text class="lbl" x="340" y="265">scans + fills</text>
+            <!-- options → storage -->
+            <path class="edge purple" d="M110,240 L110,290"/>
+            <!-- llm → LLM endpoint -->
+            <g class="node warn" data-k="d1-endpoint"><rect x="450" y="290" width="200" height="50"/><text x="550" y="310" text-anchor="middle" font-size="12">LLM Endpoint</text><text class="sub" x="550" y="326" text-anchor="middle">OpenAI / local model / any API</text></g>
+            <path class="edge" d="M550,148 L550,290"/>
+            <!-- file labels -->
+            <text x="110" y="170" text-anchor="middle" font-size="9" fill="#87867F">options.js also calls llm-client.js</text>
+          </svg>
+        </div>
+        <div class="legend">
+          <span><i class="chip blue"></i> orchestration calls</span>
+          <span><i class="chip purple"></i> data flow / storage</span>
+          <span><i class="chip"></i> DOM interaction</span>
+          <span><i class="chip orange"></i> external services</span>
+        </div>
+      </div>
+      <aside id="panel-d1">
+        <div class="hint">Click a box →</div>
+        <h3 id="d1-title">Chrome loads page</h3>
+        <div class="meta" id="d1-meta">entry point</div>
+        <p id="d1-body">Chrome reads manifest.json and injects three JS files into the page: llm-client.js, form-detector.js, content.js. They run in the page's DOM but in an isolated JavaScript world.</p>
+        <pre id="d1-code">"content_scripts": [{
+  "js": ["lib/llm-client.js",
+         "content/form-detector.js",
+         "content/content.js"],
+  "run_at": "document_idle"
+}]</pre>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ═══════════ DIAGRAM 2: Fill All Trace ═══════════ -->
+  <div class="diagram" id="d2">
+    <div class="layout">
+      <div>
+        <div class="canvas">
+          <svg class="flow" viewBox="0 0 660 1060">
+            <defs>
+              <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#87867F"/></marker>
+            </defs>
+            <!-- Step 0: Page load -->
+            <g class="node start" data-k="d2-s0"><rect x="210" y="10" width="240" height="44"/><text x="330" y="30" text-anchor="middle" font-size="12">Page loads → wait 1.5s → init()</text><text class="sub" x="330" y="44" text-anchor="middle">content.js line ~85</text></g>
+            <path class="edge" d="M330,54 L330,78"/>
+            <!-- Step 2-3: Detect -->
+            <g class="node" data-k="d2-detect"><rect x="210" y="78" width="240" height="50"/><text x="330" y="98" text-anchor="middle" font-size="12">FormDetector.detect()</text><text class="sub" x="330" y="116" text-anchor="middle">scans all inputs/textareas/selects → identify() scores each</text></g>
+            <path class="edge" d="M330,128 L330,156"/>
+            <!-- Inject buttons -->
+            <g class="node" data-k="d2-buttons"><rect x="210" y="156" width="240" height="44"/><text x="330" y="176" text-anchor="middle" font-size="12">Inject JC button + per-field "F" buttons</text><text class="sub" x="330" y="190" text-anchor="middle">nothing gets filled yet — waiting for user</text></g>
+            <path class="edge" d="M330,200 L330,228"/>
+            <!-- Fill All click -->
+            <g class="node start" data-k="d2-fillall"><rect x="210" y="228" width="240" height="44"/><text x="330" y="248" text-anchor="middle" font-size="12">User clicks "Fill All"</text><text class="sub" x="330" y="262" text-anchor="middle">sets __jcFilling = true (guard)</text></g>
+            <path class="edge" d="M330,272 L330,300"/>
+            <!-- fillPersonal -->
+            <g class="node" data-k="d2-personal"><rect x="180" y="300" width="300" height="70"/><text x="330" y="320" text-anchor="middle" font-size="12">fillPersonal()</text><text class="sub" x="330" y="336" text-anchor="middle">detect() → buildFillMap() → merge learned_fields</text><text class="sub" x="330" y="350" text-anchor="middle">for each field: fillMap[field.name] → fillField()</text><text class="sub" x="330" y="362" text-anchor="middle">→ listenForCorrections()</text></g>
+            <!-- Storage read -->
+            <g class="node storage" data-k="d2-storage1"><rect x="500" y="310" width="150" height="44"/><text x="575" y="330" text-anchor="middle" font-size="11">Chrome Storage</text><text class="sub" x="575" y="344" text-anchor="middle">profile_* + learned_fields</text></g>
+            <path class="edge purple" d="M480,335 L500,335"/><text class="lbl" x="484" y="330">reads</text>
+            <path class="edge" d="M330,370 L330,400"/>
+            <!-- fillAIQuestions -->
+            <g class="node" data-k="d2-ai"><rect x="180" y="400" width="300" height="70"/><text x="330" y="420" text-anchor="middle" font-size="12">fillAIQuestions()</text><text class="sub" x="330" y="436" text-anchor="middle">getResumeText() + extractJobDescription()</text><text class="sub" x="330" y="450" text-anchor="middle">for each textarea: LLMClient.generateAnswer()</text><text class="sub" x="330" y="462" text-anchor="middle">→ fillField() → saveAnswer()</text></g>
+            <!-- Storage read 2 -->
+            <g class="node storage" data-k="d2-storage2"><rect x="500" y="410" width="150" height="44"/><text x="575" y="430" text-anchor="middle" font-size="11">Chrome Storage</text><text class="sub" x="575" y="444" text-anchor="middle">resume_full_data + llm_*</text></g>
+            <path class="edge purple" d="M480,435 L500,435"/><text class="lbl" x="484" y="430">reads</text>
+            <!-- LLM call -->
+            <g class="node warn" data-k="d2-llm"><rect x="10" y="410" width="160" height="44"/><text x="90" y="430" text-anchor="middle" font-size="11">LLM Endpoint</text><text class="sub" x="90" y="444" text-anchor="middle">question + JD + resume → answer</text></g>
+            <path class="edge" d="M180,435 L170,435"/>
+            <path class="edge" d="M330,470 L330,500"/>
+            <!-- fillLearnedRadios -->
+            <g class="node" data-k="d2-radios"><rect x="210" y="500" width="240" height="44"/><text x="330" y="520" text-anchor="middle" font-size="12">fillLearnedRadios()</text><text class="sub" x="330" y="534" text-anchor="middle">restore previous radio selections from learned_fields</text></g>
+            <path class="edge" d="M330,544 L330,572"/>
+            <!-- fillField router -->
+            <g class="node" data-k="d2-router"><rect x="210" y="572" width="240" height="44"/><text x="330" y="592" text-anchor="middle" font-size="12">FormDetector.fillField()</text><text class="sub" x="330" y="606" text-anchor="middle">routes by element type</text></g>
+            <!-- Three strategies -->
+            <path class="edge" d="M250,616 L140,650"/>
+            <path class="edge" d="M330,616 L330,650"/>
+            <path class="edge" d="M410,616 L520,650"/>
+            <g class="node" data-k="d2-select"><rect x="50" y="650" width="180" height="50"/><text x="140" y="670" text-anchor="middle" font-size="11">fillSelect()</text><text class="sub" x="140" y="686" text-anchor="middle">native dropdown: 4-phase match</text></g>
+            <g class="node" data-k="d2-text"><rect x="240" y="650" width="180" height="50"/><text x="330" y="670" text-anchor="middle" font-size="11">fillTextInput()</text><text class="sub" x="330" y="686" text-anchor="middle">4 strategies: DOM → native → char → InputEvent</text></g>
+            <g class="node warn" data-k="d2-combo"><rect x="430" y="650" width="190" height="50"/><text x="525" y="670" text-anchor="middle" font-size="11">fillOracleCombobox()</text><text class="sub" x="525" y="686" text-anchor="middle">4 strategies vs Knockout.js</text></g>
+            <!-- Merge back -->
+            <path class="edge" d="M140,700 L330,730"/>
+            <path class="edge" d="M330,700 L330,730"/>
+            <path class="edge" d="M525,700 L330,730"/>
+            <!-- Learning -->
+            <g class="node" data-k="d2-learn"><rect x="210" y="730" width="240" height="50"/><text x="330" y="750" text-anchor="middle" font-size="12">listenForCorrections()</text><text class="sub" x="330" y="766" text-anchor="middle">attach blur listener to each filled field</text></g>
+            <path class="edge" d="M330,780 L330,808"/>
+            <!-- User edits -->
+            <g class="node warn" data-k="d2-edit"><rect x="210" y="808" width="240" height="50"/><text x="330" y="828" text-anchor="middle" font-size="12">User edits a field + leaves it (blur)</text><text class="sub" x="330" y="844" text-anchor="middle">compares new value vs what JC filled</text></g>
+            <path class="edge" d="M330,858 L330,886"/>
+            <!-- Save correction -->
+            <g class="node storage" data-k="d2-save"><rect x="210" y="886" width="240" height="44"/><text x="330" y="906" text-anchor="middle" font-size="12">saveLearnedCorrection()</text><text class="sub" x="330" y="920" text-anchor="middle">writes to learned_fields in storage</text></g>
+            <path class="edge purple" d="M450,908 L520,908"/>
+            <g class="node storage" data-k="d2-storage3"><rect x="520" y="890" width="130" height="40"/><text x="585" y="908" text-anchor="middle" font-size="10">Chrome Storage</text><text class="sub" x="585" y="920" text-anchor="middle">learned_fields</text></g>
+            <path class="edge" d="M330,930 L330,958"/>
+            <!-- Done -->
+            <g class="node end" data-k="d2-done"><rect x="210" y="958" width="240" height="44"/><text x="330" y="978" text-anchor="middle" font-size="12">Guard off → panel shows "Filled N field(s)"</text><text class="sub" x="330" y="992" text-anchor="middle">__jcFilling = false → observer resumes</text></g>
+          </svg>
+        </div>
+        <div class="legend">
+          <span><i class="chip blue"></i> trigger</span>
+          <span><i class="chip"></i> process step</span>
+          <span><i class="chip purple"></i> storage read/write</span>
+          <span><i class="chip orange"></i> external call</span>
+          <span><i class="chip green"></i> terminal</span>
+        </div>
+      </div>
+      <aside id="panel-d2">
+        <div class="hint">Click a step →</div>
+        <h3 id="d2-title">Page loads → init()</h3>
+        <div class="meta" id="d2-meta">content.js · 1.5s delay</div>
+        <p id="d2-body">Chrome injects the script. We wait 1.5s because Oracle's SPA renders form fields asynchronously — they don't exist in the DOM when the URL loads.</p>
+        <pre id="d2-code">setTimeout(function() {
+  detectedFields = FormDetector.detect();
+  if (totalFields === 0) return;
+  injectFloatingButton();
+  injectPerFieldButtons();
+}, 1500);</pre>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ═══════════ DIAGRAM 3: Clear All Trace ═══════════ -->
+  <div class="diagram" id="d3">
+    <div class="layout">
+      <div>
+        <div class="canvas">
+          <svg class="flow" viewBox="0 0 660 740">
+            <defs>
+              <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#87867F"/></marker>
+            </defs>
+            <g class="node start" data-k="d3-click"><rect x="220" y="10" width="220" height="44"/><text x="330" y="30" text-anchor="middle" font-size="12">User clicks "Clear All"</text><text class="sub" x="330" y="44" text-anchor="middle">sets __jcFilling = true</text></g>
+            <path class="edge" d="M330,54 L330,80"/>
+            <g class="node warn" data-k="d3-confirm"><rect x="220" y="80" width="220" height="44"/><text x="330" y="100" text-anchor="middle" font-size="12">confirm() dialog</text><text class="sub" x="330" y="114" text-anchor="middle">"Clear all fields? Cannot be undone."</text></g>
+            <path class="edge red" d="M220,102 L100,102 L100,180"/>
+            <g class="node end" data-k="d3-cancel"><rect x="30" y="160" width="140" height="40"/><text x="100" y="180" text-anchor="middle" font-size="11">Cancel → nothing happens</text></g>
+            <path class="edge green" d="M330,124 L330,152"/><text class="lbl" x="340" y="142">OK</text>
+            <!-- 7 steps -->
+            <g class="node" data-k="d3-s1"><rect x="220" y="152" width="220" height="44"/><text x="330" y="172" text-anchor="middle" font-size="12">1. Click "Remove value" buttons</text><text class="sub" x="330" y="186" text-anchor="middle">Oracle combobox X icons</text></g>
+            <path class="edge" d="M330,196 L330,216"/>
+            <g class="node" data-k="d3-s2"><rect x="220" y="216" width="220" height="44"/><text x="330" y="236" text-anchor="middle" font-size="12">2. Click "Delete" on profile tiles</text><text class="sub" x="330" y="250" text-anchor="middle">experience + education cards</text></g>
+            <path class="edge" d="M330,260 L330,280"/>
+            <g class="node" data-k="d3-s3"><rect x="200" y="280" width="260" height="60"/><text x="330" y="300" text-anchor="middle" font-size="12">3. Clear all text inputs + selects + radios</text><text class="sub" x="330" y="316" text-anchor="middle">native setter → empty → dispatch events → blur</text><text class="sub" x="330" y="330" text-anchor="middle">remove jcFilled + jcValue data attributes</text></g>
+            <path class="edge" d="M330,340 L330,360"/>
+            <g class="node" data-k="d3-s4"><rect x="220" y="360" width="220" height="44"/><text x="330" y="380" text-anchor="middle" font-size="12">4. Click Oracle pill selects</text><text class="sub" x="330" y="394" text-anchor="middle">skills · languages · title buttons</text></g>
+            <path class="edge" d="M330,404 L330,424"/>
+            <g class="node" data-k="d3-s5"><rect x="220" y="424" width="220" height="44"/><text x="330" y="444" text-anchor="middle" font-size="12">5. Clear Oracle combobox text inputs</text><text class="sub" x="330" y="458" text-anchor="middle">.cx-select-input elements</text></g>
+            <path class="edge" d="M330,468 L330,488"/>
+            <g class="node" data-k="d3-s6"><rect x="220" y="488" width="220" height="44"/><text x="330" y="508" text-anchor="middle" font-size="12">6. Delete profile-imported tiles</text><text class="sub" x="330" y="522" text-anchor="middle">.apply-flow-profile-item-tile elements</text></g>
+            <path class="edge" d="M330,532 L330,552"/>
+            <g class="node" data-k="d3-s7"><rect x="220" y="552" width="220" height="44"/><text x="330" y="572" text-anchor="middle" font-size="12">7. Uncheck job alerts checkbox</text><text class="sub" x="330" y="586" text-anchor="middle">#job-alerts-checkbox</text></g>
+            <path class="edge" d="M330,596 L330,624"/>
+            <g class="node" data-k="d3-status"><rect x="220" y="624" width="220" height="44"/><text x="330" y="644" text-anchor="middle" font-size="12">Show "Cleared N field(s)"</text><text class="sub" x="330" y="658" text-anchor="middle">panel status message</text></g>
+            <path class="edge" d="M330,668 L330,696"/>
+            <g class="node end" data-k="d3-done"><rect x="220" y="696" width="220" height="34"/><text x="330" y="718" text-anchor="middle" font-size="12">__jcFilling = false</text></g>
+            <!-- Storage note -->
+            <g class="node storage" data-k="d3-storage"><rect x="470" y="300" width="180" height="44"/><text x="560" y="320" text-anchor="middle" font-size="11">Chrome Storage</text><text class="sub" x="560" y="334" text-anchor="middle">NOT touched — data stays</text></g>
+            <path class="edge red" d="M460,320 L470,320"/><text class="lbl" x="464" y="315">untouched</text>
+          </svg>
+        </div>
+        <div class="legend">
+          <span><i class="chip"></i> clear step</span>
+          <span><i class="chip orange"></i> confirmation</span>
+          <span><i class="chip red"></i> cancel / no-op</span>
+          <span><i class="chip green"></i> terminal</span>
+          <span><i class="chip purple"></i> storage</span>
+        </div>
+      </div>
+      <aside id="panel-d3">
+        <div class="hint">Click a step →</div>
+        <h3 id="d3-title">User clicks "Clear All"</h3>
+        <div class="meta" id="d3-meta">content.js · createPanel handler</div>
+        <p id="d3-body">The same __jcFilling guard is set as Fill All — the clear operation modifies the DOM, and the MutationObserver should not interfere.</p>
+        <pre id="d3-code">jcPanel.querySelector('#jc-clear-form')
+  .onclick = () => {
+    window.__jcFilling = true;
+    clearForm();
+    window.__jcFilling = false;
+  };</pre>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ═══════════ DIAGRAM 4: Resume Data Flow ═══════════ -->
+  <div class="diagram" id="d4">
+    <div class="layout">
+      <div>
+        <div class="canvas">
+          <svg class="flow" viewBox="0 0 660 700">
+            <defs>
+              <marker id="arrow4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#87867F"/></marker>
+            </defs>
+            <!-- PDF upload -->
+            <g class="node start" data-k="d4-pdf"><rect x="220" y="10" width="220" height="50"/><text x="330" y="30" text-anchor="middle" font-size="12">User uploads resume PDF</text><text class="sub" x="330" y="46" text-anchor="middle">options.js → handlePDF()</text></g>
+            <path class="edge" d="M330,60 L330,88"/>
+            <!-- pdf.js extraction -->
+            <g class="node" data-k="d4-pdfjs"><rect x="220" y="88" width="220" height="50"/><text x="330" y="108" text-anchor="middle" font-size="12">pdf.js extracts raw text</text><text class="sub" x="330" y="124" text-anchor="middle">pdf-extract.js → text from every page</text></g>
+            <path class="edge" d="M330,138 L330,166"/>
+            <!-- LLM extraction -->
+            <g class="node warn" data-k="d4-llm"><rect x="200" y="166" width="260" height="60"/><text x="330" y="186" text-anchor="middle" font-size="12">LLM extracts structured data</text><text class="sub" x="330" y="202" text-anchor="middle">"Extract name, email, phone, address, ..."</text><text class="sub" x="330" y="216" text-anchor="middle">returns JSON with flat fields + arrays</text></g>
+            <path class="edge" d="M330,226 L330,254"/>
+            <!-- Split into two storage paths -->
+            <path class="edge" d="M330,254 L200,290"/>
+            <path class="edge" d="M330,254 L460,290"/>
+            <!-- Profile fields -->
+            <g class="node storage" data-k="d4-profile"><rect x="80" y="290" width="240" height="60"/><text x="200" y="310" text-anchor="middle" font-size="12">Profile fields → storage</text><text class="sub" x="200" y="326" text-anchor="middle">profile_name · profile_email</text><text class="sub" x="200" y="340" text-anchor="middle">profile_phone · profile_address · ...</text></g>
+            <!-- resume_full_data -->
+            <g class="node storage" data-k="d4-full"><rect x="340" y="290" width="240" height="60"/><text x="460" y="310" text-anchor="middle" font-size="12">resume_full_data → storage</text><text class="sub" x="460" y="326" text-anchor="middle">JSON: summary · experience[] · education[]</text><text class="sub" x="460" y="340" text-anchor="middle">skills[] · projects[] · languages[]</text></g>
+            <!-- Arrow down to Fill All usage -->
+            <path class="edge" d="M200,350 L200,400"/>
+            <path class="edge" d="M460,350 L460,400"/>
+            <!-- Labels -->
+            <text x="140" y="380" font-size="10" fill="#87867F">used by buildFillMap()</text>
+            <text x="400" y="380" font-size="10" fill="#87867F">used by getResumeText()</text>
+            <!-- buildFillMap -->
+            <g class="node" data-k="d4-build"><rect x="80" y="400" width="240" height="70"/><text x="200" y="420" text-anchor="middle" font-size="12">buildFillMap()</text><text class="sub" x="200" y="436" text-anchor="middle">reads profile_* from storage</text><text class="sub" x="200" y="450" text-anchor="middle">splits name → first + last</text><text class="sub" x="200" y="464" text-anchor="middle">splits address → street + city + country</text></g>
+            <!-- getResumeText -->
+            <g class="node" data-k="d4-resume"><rect x="340" y="400" width="240" height="70"/><text x="460" y="420" text-anchor="middle" font-size="12">getResumeText()</text><text class="sub" x="460" y="436" text-anchor="middle">reads resume_full_data from storage</text><text class="sub" x="460" y="450" text-anchor="middle">reconstructs plain text from</text><text class="sub" x="460" y="464" text-anchor="middle">summary + experience + education + skills</text></g>
+            <!-- Merge corrections -->
+            <path class="edge" d="M200,470 L200,500"/>
+            <g class="node warn" data-k="d4-merge"><rect x="80" y="500" width="240" height="50"/><text x="200" y="520" text-anchor="middle" font-size="12">Merge learned_fields</text><text class="sub" x="200" y="536" text-anchor="middle">corrections override profile defaults</text></g>
+            <!-- Arrows to final use -->
+            <path class="edge green" d="M200,550 L200,590"/>
+            <path class="edge green" d="M460,470 L460,590"/>
+            <!-- fillPersonal -->
+            <g class="node" data-k="d4-fillp"><rect x="80" y="590" width="240" height="50"/><text x="200" y="610" text-anchor="middle" font-size="12">fillPersonal()</text><text class="sub" x="200" y="626" text-anchor="middle">fillMap[field.name] → fillField()</text></g>
+            <!-- fillAIQuestions -->
+            <g class="node" data-k="d4-fillai"><rect x="340" y="590" width="240" height="50"/><text x="460" y="610" text-anchor="middle" font-size="12">fillAIQuestions()</text><text class="sub" x="460" y="626" text-anchor="middle">resumeText + JD → LLM → answer → fillField()</text></g>
+            <!-- Result -->
+            <path class="edge" d="M200,640 L330,670"/>
+            <path class="edge" d="M460,640 L330,670"/>
+            <g class="node end" data-k="d4-done"><rect x="220" y="670" width="220" height="28"/><text x="330" y="690" text-anchor="middle" font-size="12">Fields filled on the page</text></g>
+          </svg>
+        </div>
+        <div class="legend">
+          <span><i class="chip blue"></i> trigger</span>
+          <span><i class="chip purple"></i> storage</span>
+          <span><i class="chip orange"></i> LLM call</span>
+          <span><i class="chip"></i> transform</span>
+          <span><i class="chip green"></i> final use</span>
+        </div>
+      </div>
+      <aside id="panel-d4">
+        <div class="hint">Click a step →</div>
+        <h3 id="d4-title">User uploads resume PDF</h3>
+        <div class="meta" id="d4-meta">options.js · handlePDF()</div>
+        <p id="d4-body">The settings page has a file upload area. When you drop or select a PDF, handlePDF() reads it as raw bytes and passes it to pdf.js for text extraction.</p>
+        <pre id="d4-code">async function handlePDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const text = await extractTextFromPDF(arrayBuffer);
+  await runExtraction(text, file.name);
+}</pre>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.diagram').forEach(d => d.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.diagram).classList.add('active');
+  });
+});
+
+// Detail data for each diagram
+const DETAILS = {
+  // Diagram 1: Architecture
+  'd1-chrome': { title: 'Chrome loads page', meta: 'entry point', body: 'Chrome reads manifest.json and injects three JS files into the page: llm-client.js, form-detector.js, content.js. They run in the page\'s DOM but in an isolated JavaScript world — Oracle\'s code can\'t see them.', code: '"content_scripts": [{\n  "js": ["lib/llm-client.js",\n         "content/form-detector.js",\n         "content/content.js"],\n  "run_at": "document_idle"\n}]' },
+  'd1-content': { title: 'content.js — The Orchestrator', meta: '879 lines · content/', body: 'Manages lifecycle, UI, fill orchestration, and learning. Calls FormDetector to find fields and fill them. Decides WHEN to detect and WHAT data to feed the engine. Does not know how Oracle comboboxes work internally.', code: 'init()\ninjectFloatingButton()\ncreatePanel()\nfillPersonal()\nfillAIQuestions()\nfillLearnedRadios()\nbuildFillMap()\nlistenForCorrections()\nclearForm()' },
+  'd1-detector': { title: 'form-detector.js — The Engine', meta: '702 lines · content/', body: 'Pure detection and filling. No opinions about UI, timing, or storage. Takes a DOM and returns field lists. Takes a field and value and fills it. Contains the pattern dictionary and all fill strategies.', code: 'FormDetector = {\n  fieldPatterns: {...}\n  detect() → field lists\n  identify(el) → field identity\n  fillField(field, value) → router\n  fillSelect() → native dropdown\n  fillTextInput() → 4 strategies\n  fillOracleCombobox() → 4 strategies\n}' },
+  'd1-llm': { title: 'llm-client.js — The API Bridge', meta: '100 lines · lib/', body: 'Talks to your LLM endpoint. Formats prompts, sends HTTP requests, parses responses. Shared between content.js (for answering questions) and options.js (for profile extraction and connection testing).', code: 'LLMClient = {\n  getConfig() → reads from storage\n  chat(messages) → HTTP POST\n  generateAnswer(question, jd, resume)\n    → formats prompt → chat() → answer\n}' },
+  'd1-options': { title: 'options.js — Settings Page', meta: '1317 lines · options/', body: 'Handles resume upload, profile extraction, settings editing, auto-save. Calls llm-client.js for extraction. Saves to resume_full_data and profile_* keys in Chrome storage.', code: 'handlePDF() → pdf.js → LLM → storage\nrunExtraction() → extract profile fields\nautoSave() → persist to chrome.storage.sync' },
+  'd1-popup': { title: 'popup.js — Extension Popup', meta: 'popup/', body: 'The small window when you click the extension icon. Shows field counts detected on the page. Has Fill All and Clear All buttons that send messages to content.js.', code: 'chrome.tabs.sendMessage(tab.id, {\n  type: "jc_fill_all"\n});' },
+  'd1-bg': { title: 'background.js — Service Worker', meta: 'background/', body: 'Runs separately from the page. Handles PDF text extraction (using pdf.js) and LLM profile extraction (sending resume text to the LLM and parsing the response). Opens the options page when requested.', code: 'chrome.runtime.onMessage.addListener(\n  (msg) => {\n    if (msg.type === "extract_pdf_text")\n      → pdf.js extraction\n    if (msg.type === "extract_profile_from_text")\n      → LLM extraction\n  }\n);' },
+  'd1-storage': { title: 'Chrome Storage', meta: 'synced across devices', body: 'A key-value database Chrome provides to extensions. Data stored here syncs across your Chrome instances. The extension stores everything here: profile fields, resume data, LLM config, learned corrections, saved answers.', code: 'profile_name: "Shivam Bhalla"\nprofile_email: "shivam@example.com"\nresume_full_data: "{summary, experience[], ...}"\nlearned_fields: {"email": "new@..."}\nsaved_answers: [{question, answer, date}]\nllm_base_url: "http://localhost:19530/v1"' },
+  'd1-dom': { title: 'Page DOM', meta: 'Oracle CX form fields', body: 'The actual HTML elements on the page — inputs, textareas, selects, comboboxes. form-detector.js scans these, content.js orchestrates filling them. The DOM is what changes when Oracle re-renders a section.', code: '<input name="primary-email" type="email">\n<textarea id="oda-work-summary-text-area">\n<select name="country">\n<div role="combobox" class="cx-select">' },
+  'd1-endpoint': { title: 'LLM Endpoint', meta: 'external service', body: 'Your configured LLM — OpenAI, a local model, or any OpenAI-compatible API. Called for answering application questions and extracting profile data from resume text.', code: 'POST /chat/completions\n{\n  "model": "gpt-4o-mini",\n  "messages": [\n    {"role": "system", "content": "..."},\n    {"role": "user", "content": "question..."}\n  ]\n}' },
+
+  // Diagram 2: Fill All
+  'd2-s0': { title: 'Page loads → init()', meta: 'content.js · 1.5s delay', body: 'Chrome injects the script. We wait 1.5s because Oracle\'s SPA renders form fields asynchronously — they don\'t exist in the DOM when the URL loads. After the delay, detect() runs.', code: 'setTimeout(function() {\n  detectedFields = FormDetector.detect();\n  if (totalFields === 0) return;\n  injectFloatingButton();\n  injectPerFieldButtons();\n}, 1500);' },
+  'd2-detect': { title: 'FormDetector.detect()', meta: 'form-detector.js · Steps 2-3', body: 'Scans every input, textarea, and select on the page. For each element, identify(el) reads 6 sources (label, autocomplete, aria-label, name, id, placeholder) and scores them against the pattern dictionary. Highest score wins.', code: 'identify(el):\n  sources = [label(4x), autocomplete(3x),\n    aria-label(2x), name(1x), id(1x), placeholder(1x)]\n  for each pattern in fieldPatterns:\n    score = sum(weight × 100 + pattern.length)\n  return highest scoring field identity' },
+  'd2-buttons': { title: 'Inject buttons', meta: 'content.js', body: 'Creates a floating blue "JC" button in the bottom-right corner and wraps each detected field with a small "F" button that appears on hover. Nothing gets filled yet — waiting for the user to click.', code: 'injectFloatingButton()\n  → creates #jc-float-btn\ninjectPerFieldButtons()\n  → wraps each field with .jc-field-fill-btn' },
+  'd2-fillall': { title: 'User clicks "Fill All"', meta: 'content.js · createPanel handler', body: 'Sets the __jcFilling guard flag to true. This tells the MutationObserver (which watches for DOM changes) to not interfere during the fill operation. Then calls three functions in sequence.', code: 'jcPanel.querySelector("#jc-fill-all")\n  .onclick = async () => {\n    window.__jcFilling = true;\n    await fillPersonal();\n    await fillAIQuestions();\n    await fillLearnedRadios();\n    window.__jcFilling = false;\n  };' },
+  'd2-personal': { title: 'fillPersonal()', meta: 'content.js · Steps 2-8', body: 'Detects fields, builds the value map from storage, merges learned corrections, and fills each field. For each personal field and select, looks up fillMap[field.name] and calls fillField().', code: 'fields = FormDetector.detect()\nfillMap = buildFillMap()\nmerge learned_fields over defaults\nfor each field:\n  value = fillMap[field.name]\n  if value && !skipFieldForType(field, value):\n    FormDetector.fillField(field, value)\nlistenForCorrections(filledElements)' },
+  'd2-ai': { title: 'fillAIQuestions()', meta: 'content.js · Steps 9-10', body: 'Gets resume text from storage, scrapes the job description from the page. For each textarea, sends the question + JD + resume to the LLM. Gets an answer back and fills it into the textarea.', code: 'resumeText = getResumeText()\njd = extractJobDescription()\nfor each textarea:\n  question = field.label\n  answer = LLMClient.generateAnswer(\n    question, jd, resumeText)\n  FormDetector.fillField(field, answer)\n  saveAnswer(question, answer)' },
+  'd2-radios': { title: 'fillLearnedRadios()', meta: 'content.js · Step 11', body: 'Reads learned_fields from storage. Groups all radio buttons on the page by their name attribute. For each group, checks if the question text matches a stored key. If you previously answered "Yes" to a question, it checks that button again.', code: 'learned_fields = chrome.storage.sync.get()\nradios = document.querySelectorAll("radio")\nfor each radio group:\n  key = "radio_" + questionText\n  if learned_fields[key]:\n    check the matching radio button' },
+  'd2-router': { title: 'FormDetector.fillField()', meta: 'form-detector.js · Step 6', body: 'The router. Inspects the element type and decides which filling strategy to use. This is the only entry point for filling — content.js never calls the strategies directly.', code: 'fillField(field, value):\n  if <select> → fillSelect()\n  if Oracle combobox → fillOracleCombobox()\n  else → fillTextInput()' },
+  'd2-select': { title: 'fillSelect()', meta: 'form-detector.js · Step 6a', body: 'For native HTML dropdowns. The value we have might not exactly match the option text. Tries four matching strategies: exact text, starts-with, word-boundary regex, substring. First match wins.', code: 'Phase 1: exact text match\nPhase 2: starts-with match\nPhase 3: word-boundary regex match\nPhase 4: substring match\n→ select the matching option → dispatch change' },
+  'd2-text': { title: 'fillTextInput()', meta: 'form-detector.js · Step 7', body: 'For text inputs, emails, phones. Tries up to four strategies: direct DOM assignment, native prototype setter (bypasses React/Vue), char-by-char typing (Oracle/Knockout), InputEvent per-character.', code: 'Strategy 1: el.value = x + dispatch events\nStrategy 2: native prototype setter\nStrategy 3: char-by-char (20ms each)\nStrategy 4: InputEvent(insertText) per char\n→ first success wins' },
+  'd2-combo': { title: 'fillOracleCombobox()', meta: 'form-detector.js · Step 6b', body: 'For Oracle CX dropdowns that use Knockout.js. Knockout actively rejects synthetic values. Four strategies: click-open-and-select, native setter + Enter, char-by-char typing, InputEvent per-character.', code: 'Strategy 1: click combobox → find option → click\nStrategy 2: native setter + Enter + 300ms verify\nStrategy 3: char-by-char (30ms each)\nStrategy 4: InputEvent(insertText) per char\n→ Knockout sees each char as human typing' },
+  'd2-learn': { title: 'listenForCorrections()', meta: 'content.js · Step 8', body: 'After filling, attaches a one-time blur listener to each filled element. When you click into the field, change the value, and click away, the listener fires and compares the new value against what JC set.', code: 'for each filled element:\n  el.dataset.jcValue = filledValue\n  el.addEventListener("blur", () => {\n    if (newValue !== oldValue):\n      saveLearnedCorrection(name, newValue)\n  })' },
+  'd2-edit': { title: 'User edits a field', meta: 'blur event', body: 'You click into a field that JC filled, change the value, and click somewhere else (blur). The listener compares the new value against what JC stored in el.dataset.jcValue. If different, a correction is saved.', code: 'oldValue = el.dataset.jcValue  // what JC filled\nnewValue = el.value              // what you typed\nif (newValue !== oldValue):\n  saveLearnedCorrection(fieldName, newValue)' },
+  'd2-save': { title: 'saveLearnedCorrection()', meta: 'content.js', body: 'Writes one correction to learned_fields in Chrome storage. learned_fields is a flat key-value object. Next session, buildFillMap() merges these corrections over your profile defaults — corrections always win.', code: 'chrome.storage.sync.get("learned_fields")\nfields[fieldName] = value\nchrome.storage.sync.set({\n  learned_fields: fields\n})' },
+  'd2-done': { title: 'Done', meta: 'guard off', body: '__jcFilling is set back to false. The MutationObserver can resume watching for DOM changes. The panel shows "Filled N field(s)" as a status message that auto-clears after 5 seconds.', code: 'window.__jcFilling = false;\nshowStatus("Filled " + filled + " field(s)");' },
+
+  // Diagram 3: Clear All
+  'd3-click': { title: 'User clicks "Clear All"', meta: 'content.js', body: 'The same __jcFilling guard is set as Fill All — the clear operation modifies the DOM, and the MutationObserver should not interfere.', code: 'window.__jcFilling = true;\nclearForm();\nwindow.__jcFilling = false;' },
+  'd3-confirm': { title: 'confirm() dialog', meta: 'browser built-in', body: 'A standard browser dialog asks "Clear all fields? This cannot be undone." The extension can\'t customize this — it\'s a browser security feature. Cancel stops everything.', code: 'if (!confirm("Clear all fields?"))\n  return;  // nothing happens' },
+  'd3-cancel': { title: 'Cancel → nothing happens', meta: 'early return', body: 'If the user clicks Cancel, clearForm() returns immediately. No fields are cleared, no storage is modified, the guard is released.', code: 'return;' },
+  'd3-s1': { title: 'Step 1: Remove value buttons', meta: 'Oracle combobox X icons', body: 'Finds all buttons with title containing "Remove value" — these are the small X icons on Oracle combobox fields like country and phone code. Clicks each visible one.', code: 'document.querySelectorAll(\n  "button[title*=\'Remove value\']"\n).forEach(btn => btn.click());' },
+  'd3-s2': { title: 'Step 2: Delete profile tiles', meta: 'experience + education cards', body: 'Finds all buttons with title or aria-label "Delete" — these are on the experience and education cards that Oracle imports from your profile. Clicks each one.', code: 'document.querySelectorAll(\n  "button[title=\'Delete\']"\n).forEach(btn => btn.click());' },
+  'd3-s3': { title: 'Step 3: Clear all inputs', meta: 'text inputs + selects + radios', body: 'The biggest step. For every input, textarea, and select on the page: radios/checkboxes get unchecked, selects reset to first option, text inputs get emptied using the native prototype setter (bypassing framework interceptors). Also removes the jcFilled and jcValue data attributes used by the learning system.', code: 'for each input/textarea/select:\n  if radio/checkbox: uncheck\n  if select: selectedIndex = 0\n  if text: nativeSetter(el, "") +\n    dispatch input/change + blur\n  remove dataset.jcFilled\n  remove dataset.jcValue' },
+  'd3-s4': { title: 'Step 4: Oracle pill selects', meta: 'skills · languages · title', body: 'Oracle\'s custom pill-shaped buttons for skills, languages, and title selection. Each pill is a clickable button element. Clicking a selected pill deselects it.', code: 'document.querySelectorAll(\n  ".cx-select-pill-section"\n).forEach(pill => pill.click());' },
+  'd3-s5': { title: 'Step 5: Oracle combobox text', meta: '.cx-select-input', body: 'The editable text portion of Oracle-style dropdowns where you type to search for options. These are separate from the native inputs cleared in step 3.', code: 'document.querySelectorAll(\n  ".cx-select-input"\n).forEach(el => {\n  el.value = "";\n  dispatch input event\n});' },
+  'd3-s6': { title: 'Step 6: Profile-imported tiles', meta: '.apply-flow-profile-item-tile', body: 'Experience, education, and other cards that Oracle pulled from your profile. Each tile has internal Delete buttons that need to be clicked.', code: 'document.querySelectorAll(\n  ".apply-flow-profile-item-tile"\n).forEach(tile => {\n  tile.querySelectorAll("button")\n    .forEach(btn => btn.click());\n});' },
+  'd3-s7': { title: 'Step 7: Job alerts checkbox', meta: '#job-alerts-checkbox', body: 'The "Send me job alerts" checkbox — a standalone checkbox that isn\'t part of the application fields but should be cleared too.', code: 'const cb = document.getElementById(\n  "job-alerts-checkbox"\n);\nif (cb && cb.checked) {\n  cb.checked = false;\n  dispatch change event\n}' },
+  'd3-status': { title: 'Show status message', meta: 'panel status', body: 'Counts everything that was cleared and shows "Cleared N field(s)" in the panel status area. Auto-clears after 5 seconds.', code: 'showStatus("Cleared " + cleared + " field(s)");' },
+  'd3-done': { title: 'Done — guard off', meta: '', body: '__jcFilling is set back to false. Chrome storage is NOT touched — your profile, resume data, learned corrections, and saved answers all stay intact. Fill All again to restore everything.', code: 'window.__jcFilling = false;\n// storage untouched — data preserved' },
+  'd3-storage': { title: 'Chrome Storage — untouched', meta: 'data preserved', body: 'Clear All only clears the form on the page. Chrome storage keeps your profile, resume data, learned corrections, and saved answers. Click Fill All again and the same data gets filled back in.', code: '// NOT called:\n// chrome.storage.sync.clear()\n// All profile_* keys preserved\n// learned_fields preserved\n// saved_answers preserved' },
+
+  // Diagram 4: Resume Data Flow
+  'd4-pdf': { title: 'User uploads resume PDF', meta: 'options.js · handlePDF()', body: 'The settings page has a file upload area. When you drop or select a PDF, handlePDF() reads it as raw bytes (an ArrayBuffer) and passes it to pdf.js for text extraction.', code: 'async function handlePDF(file) {\n  const arrayBuffer = await file.arrayBuffer();\n  const text = await extractTextFromPDF(arrayBuffer);\n  await runExtraction(text, file.name);\n}' },
+  'd4-pdfjs': { title: 'pdf.js extracts raw text', meta: 'pdf-extract.js', body: 'pdf.js is a bundled library that parses the PDF\'s internal structure. It extracts text content from every page and any hyperlinks from annotations. Returns a plain text string — your entire resume as text.', code: 'for each page in PDF:\n  textContent = page.getTextContent()\n  fullText += items.map(i => i.str).join(" ")\n  annotations = page.getAnnotations()\n  // extract hyperlinks too' },
+  'd4-llm': { title: 'LLM extracts structured data', meta: 'background.js · LLM call', body: 'The raw resume text is sent to your configured LLM endpoint with a prompt: "Extract name, email, phone, address, work_authorization as JSON." The LLM reads the resume and returns structured data — flat fields plus arrays for experience, education, skills.', code: 'POST /chat/completions\nsystem: "Extract these fields as JSON:\n  name, email, phone, linkedin,\n  github, website, address,\n  work_authorization"\nuser: "Resume: ..."' },
+  'd4-profile': { title: 'Profile fields → storage', meta: 'chrome.storage.sync', body: 'Flat scalar fields from the LLM response get written into individual profile inputs on the settings page, then auto-saved to Chrome storage. Each field is a separate key.', code: 'profile_name: "Shivam Bhalla"\nprofile_email: "shivam@example.com"\nprofile_phone: "+33753788537"\nprofile_address: "Street, City, Poland"\nprofile_linkedin: "https://linkedin.com/..."' },
+  'd4-full': { title: 'resume_full_data → storage', meta: 'chrome.storage.sync', body: 'Arrays and objects from the LLM response (experience, education, skills, projects, languages) get saved as a single JSON blob. This is the single source of truth for resume content.', code: '{\n  "summary": "Systems engineer with 8+ years...",\n  "rawSections": {\n    "experience": [{title, company, dates, desc}]\n    "education": [{degree, field, school}]\n    "skills": ["Python", "MLX", "..."]\n    "projects": [{name, description}]\n  }\n}' },
+  'd4-build': { title: 'buildFillMap()', meta: 'content.js · Step 4', body: 'Reads profile fields from Chrome storage and splits composite values. "Shivam Bhalla" becomes first_name + last_name. "Street, City, Poland" becomes street + city + country. Returns a flat dictionary with keys matching what identify() returns.', code: 'return {\n  first_name: "Shivam",\n  last_name: "Bhalla",\n  email: "shivam@example.com",\n  street_address: "Street",\n  city: "City",\n  country: "Poland"\n}' },
+  'd4-resume': { title: 'getResumeText()', meta: 'content.js · Step 9a', body: 'Reads resume_full_data from Chrome storage and reconstructs it as plain text. The LLM needs text context to answer questions well — the structured JSON gets converted back to readable text.', code: 'full = JSON.parse(resume_full_data)\ntext = full.summary\nfor experience: text += title + company + dates\ntext += "Skills: " + skills.join(", ")\nreturn text' },
+  'd4-merge': { title: 'Merge learned_fields', meta: 'content.js', body: 'Your profile fields are the defaults. Learned corrections from previous sessions override them. If you changed the phone number once, every subsequent Fill All uses your corrected number.', code: 'fillMap = buildFillMap()\nfor (key, val) in learned_fields:\n  fillMap[key] = val  // override' },
+  'd4-fillp': { title: 'fillPersonal()', meta: 'content.js', body: 'For each detected personal field and select, looks up the value in the fill map by field name, validates it, and calls fillField() to make it stick on the page.', code: 'for each field in personal + selects:\n  value = fillMap[field.name]\n  FormDetector.fillField(field, value)' },
+  'd4-fillai': { title: 'fillAIQuestions()', meta: 'content.js', body: 'For each textarea on the page, sends the question + job description + resume text to the LLM. Gets an answer back and fills it into the textarea.', code: 'for each textarea:\n  answer = LLMClient.generateAnswer(\n    question, jd, resumeText)\n  FormDetector.fillField(field, answer)' },
+  'd4-done': { title: 'Fields filled', meta: 'page DOM updated', body: 'All detected fields now have values. Personal fields filled from profile data, textareas filled with LLM-generated answers, radio buttons restored from learned selections.', code: '// page DOM now has values\n// user can review and edit\n// corrections get learned for next time' },
+};
+
+// Wire up click handlers for all diagrams
+document.querySelectorAll('.node[data-k]').forEach(node => {
+  node.addEventListener('click', () => {
+    const key = node.dataset.k;
+    const d = DETAILS[key];
+    if (!d) return;
+
+    // Find which diagram this node belongs to
+    const diagram = node.closest('.diagram');
+    const prefix = diagram.id;
+
+    // Deactivate all nodes in this diagram
+    diagram.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+    node.classList.add('active');
+
+    // Update the side panel
+    const panel = document.getElementById('panel-' + prefix);
+    panel.querySelector('h3').textContent = d.title;
+    panel.querySelector('.meta').textContent = d.meta;
+    panel.querySelector('p').innerHTML = d.body;
+    panel.querySelector('pre').textContent = d.code;
+  });
+});
+
+// Activate first node in each diagram
+document.querySelectorAll('.diagram').forEach(diag => {
+  const first = diag.querySelector('.node');
+  if (first) first.click();
+});
+</script>
+</body>
+</html>
