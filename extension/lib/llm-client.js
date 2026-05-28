@@ -83,6 +83,15 @@ const LLMClient = {
     return text;
   },
 
+  // Generate an answer for a job application question
+  // Called by content.js fillAIQuestions() and fillSingleField()
+  async generateAnswer(question, jobDescription, resumeText) {
+    return this.chat([
+      { role: 'system', content: 'You are helping a job applicant answer application questions. Use the resume and job description to write a concise, professional answer. Be honest — do not invent experience. Answer directly with no explanation.' },
+      { role: 'user', content: `Job Description:\n${jobDescription || '(Not provided)'}\n\nResume:\n${resumeText}\n\nQuestion: ${question}\n\nAnswer:` },
+    ], { temperature: 0.3, maxTokens: 300 });
+  },
+
   // Extract a value for any form field from the resume
   async extractFieldValue(fieldLabel, fieldType, resumeText, jobDescription) {
     if (fieldType === 'personal') {
@@ -96,5 +105,5 @@ const LLMClient = {
         { role: 'user', content: `Job Description:\n${jobDescription || '(Not provided)'}\n\nResume:\n${resumeText}\n\nQuestion: ${fieldLabel}\n\nAnswer:` },
       ], { temperature: 0.3, maxTokens: 300 });
     }
-  }
+  },
 };

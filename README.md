@@ -19,6 +19,23 @@ AI-powered job application autofiller. Bring your own LLM endpoint.
                                        └──────────────────────┘
 ```
 
+## Architecture
+
+Interactive visual architecture covering the full extension internals:
+
+**[📐 View Interactive Architecture](https://shivam2014.github.io/job-copilot/)**
+
+Four diagrams with clickable nodes and detail panels:
+
+| Diagram | What it shows |
+|---------|--------------|
+| Extension Architecture | File structure, data flow between modules, Chrome Storage, LLM endpoint |
+| Fill All Trace | Step-by-step execution from button click through detection, filling, and learning |
+| Clear All Trace | All 7 clear phases — Oracle comboboxes, profile tiles, inputs, radios |
+| Resume Data Flow | PDF upload → LLM extraction → storage → fill map → form fields |
+
+Also available locally: open `ARCHITECTURE_VISUAL.html` in any browser.
+
 ## Features
 
 - **Resume → Profile extraction** — paste your resume, click "Extract", LLM fills your profile fields
