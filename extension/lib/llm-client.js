@@ -1,5 +1,25 @@
-// LLM Client — OpenAI-compatible API wrapper
-// Handles both regular models (content) and reasoning models (reasoning_content)
+// ═══════════════════════════════════════════════════════════════
+// LLM Client — THE API BRIDGE
+// ═══════════════════════════════════════════════════════════════
+//
+// FILE ROLE:
+//   This file talks to your LLM endpoint. It formats prompts, sends HTTP
+//   requests, and parses responses. It handles both regular models (which
+//   return content) and reasoning models (which return reasoning_content).
+//
+// WHY THIS FILE EXISTS SEPARATELY:
+//   The options page needs to call the LLM to test the connection and to
+//   extract profiles from resume text. The content script needs it to
+//   answer application questions. If LLM logic lived in content.js, the
+//   options page would have to duplicate it. This file is shared by both.
+//
+// STEP 10 IN THE EXECUTION TRACE:
+//   generateAnswer(question, jobDescription, resumeText) is called by
+//   content.js fillAIQuestions(). It formats a chat completion request
+//   with a system prompt ("answer this question using the resume and JD")
+//   and a user message containing the question, JD, and resume text.
+//   POSTs to the configured endpoint. Returns the answer string.
+// ═══════════════════════════════════════════════════════════════
 
 const LLMClient = {
   async getConfig() {

@@ -1,6 +1,40 @@
 // ═══════════════════════════════════════════════════════════════
-// Content script — injected into job application pages
-// Simplified: 3 interactions only — Fill All, per-field button, Clear All
+// Content script — THE ORCHESTRATOR
+// ═══════════════════════════════════════════════════════════════
+//
+// FILE ROLE:
+//   This file manages the extension's lifecycle, UI, fill orchestration,
+//   and the learning system. It does NOT do detection or filling directly —
+//   those live in form-detector.js. This file calls FormDetector.detect()
+//   to find fields and FormDetector.fillField() to fill them, then handles
+//   everything around that: when to detect, what values to fill, how to
+//   learn from user corrections, and what the user sees.
+//
+// WHY THIS FILE EXISTS SEPARATELY:
+//   form-detector.js is a pure engine: it takes a DOM and returns field
+//   lists, it takes a field and a value and fills it. It has no opinions
+//   about UI, timing, storage, or user interaction. Content.js is the
+//   orchestrator that decides WHEN to call the engine and WHAT data to
+//   feed it. This separation means you can test the fill engine against
+//   mock DOMs without needing the panel, the popup, or Chrome storage.
+//
+//   llm-client.js is separate because the options page and popup also
+//   need to call the LLM (for connection testing, for profile extraction).
+//   If LLM logic lived here, the options page would have to duplicate it.
+//
+// EXECUTION TRACE (when user clicks "Fill All"):
+//   Step 1:  fillAll() is called → sets __jcFilling guard → calls fillPersonal(), fillAIQuestions(), fillLearnedRadios()
+//   Step 2:  fillPersonal() → calls FormDetector.detect() to find fields
+//   Step 3:  (in form-detector.js) detect() → identify(el) for each element → scoring game against fieldPatterns
+//   Step 4:  fillPersonal() → calls buildFillMap() to read profile from storage, split name/address, merge learned corrections
+//   Step 5:  fillPersonal() → for each field, looks up fillMap[field.name], calls FormDetector.fillField(field, value)
+//   Step 6:  (in form-detector.js) fillField() → routes to fillSelect/fillTextInput/fillOracleCombobox based on element type
+//   Step 7:  (in form-detector.js) fillTextInput() → tries DOM assignment → native setter → char-by-char → InputEvent
+//   Step 8:  fillPersonal() → calls listenForCorrections() to attach blur listeners for learning
+//   Step 9:  fillAIQuestions() → calls getResumeText() + extractJobDescription(), then LLMClient.generateAnswer() for each textarea
+//   Step 10: (in llm-client.js) generateAnswer() → sends question + JD + resume to LLM endpoint → returns answer
+//   Step 11: fillLearnedRadios() → reads learned_fields, restores previous radio button selections
+//   Step 12: __jcFilling guard removed → MutationObserver resumes → panel shows status message
 // ═══════════════════════════════════════════════════════════════
 
 // ── State ──────────────────────────────────────────────────────────
@@ -9,7 +43,11 @@ let jcPanel = null;
 let panelWasOpen = false;
 
 // ── SPA Navigation Handler ─────────────────────────────────────────
-// Re-inject buttons after Apply/Next/Continue (Oracle CX SPA wipe).
+// Oracle CX is a single-page app. When you click "Apply", "Next", or
+// "Continue", Oracle destroys the current form and renders a new one.
+// This listener catches those clicks, waits 3 seconds for Oracle to
+// finish rendering, then re-runs detect() (Step 2-3) and re-injects
+// per-field "F" buttons on the new fields. No auto-fill — just buttons.
 document.addEventListener('click', function(e) {
   var t = e.target.closest('button, a') || e.target;
   if (t.tagName === 'BUTTON' || t.tagName === 'A') {
@@ -35,9 +73,13 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// ── Main Init ──────────────────────────────────────────────────────
-// Wait 1.5s for Oracle CX SPA to render, detect fields, inject buttons.
-// NO auto-fill — user clicks when ready.
+// ── Main Init (TRIGGER: page load) ─────────────────────────────────
+// Chrome injects this script into the page at document_idle (manifest.json).
+// Oracle CX is a single-page app — form fields don't exist in the DOM yet
+// when the URL loads. They appear 1-2 seconds later when Oracle's JS renders.
+// We wait 1.5s, then call FormDetector.detect() (Step 2-3) to find fields.
+// If fields exist, we inject the JC button + per-field "F" buttons.
+// NO auto-fill — user clicks Fill All when ready.
 async function init() {
   setTimeout(function() {
     detectedFields = FormDetector.detect();
@@ -193,7 +235,11 @@ function injectPerFieldButtons() {
 }
 
 
-// Get resume context from resume_full_data (single source of truth)
+// Step 9a: reconstruct resume text from resume_full_data.
+// resume_full_data is a JSON object with structured sections (summary,
+// experience, education, skills, projects) extracted by the LLM when
+// you uploaded your resume in settings. We convert it to plain text
+// because that's what the LLM expects as context for answering questions.
 async function getResumeText() {
   const data = await chrome.storage.sync.get(['resume_full_data']);
   if (data.resume_full_data) {
@@ -225,7 +271,10 @@ async function getResumeText() {
   return '';
 }
 
-// Fill one field — text/select from profile, textarea via LLM
+// TRIGGER: user clicks the per-field "F" button (hover to reveal).
+// Same logic as fillAll but for one field. Textareas go to the LLM
+// (Step 9-10 path), everything else goes to the profile fill map
+// (Steps 4-5 path). Attaches learning listener (Step 8) either way.
 async function fillSingleField(field) {
   const fieldLabel = field.label || field.name || 'field';
 
@@ -284,7 +333,9 @@ async function fillSingleField(field) {
   }
 }
 
-// ── Fill All — Personal Fields ─────────────────────────────────────
+// ── Fill All — Personal Fields (Steps 2-8) ─────────────────────────
+// Step 2: detect fields on page. Step 4: build value map from storage.
+// Step 5: look up values and fill. Step 8: attach learning listeners.
 async function fillPersonal() {
   const fields = FormDetector.detect();
   const fillMap = await buildFillMap();
@@ -302,10 +353,13 @@ async function fillPersonal() {
     if (val) fillMap[key] = val;
   }
 
+  // Step 5: for each detected field, look up its value in the fill map.
+  // fillMap keys match field.name because buildFillMap() uses the same
+  // names that FormDetector.identify() returns (first_name, email, etc.)
   let filled = 0;
   const filledEls = [];
   for (const field of [...fields.personal, ...fields.selects]) {
-    const value = fillMap[field.name];
+    const value = fillMap[field.name];  // Step 5: lookup by field identity
     if (value && !skipFieldForType(field, value)) {
       const ok = await FormDetector.fillField(field, value);
       if (ok) { filled++; filledEls.push(field.el); }
@@ -320,7 +374,9 @@ async function fillPersonal() {
   }
 }
 
-// ── Fill All — AI Questions ────────────────────────────────────────
+// ── Fill All — AI Questions (Steps 9-10) ───────────────────────────
+// Step 9: get resume text from storage, scrape job description from page.
+// For each textarea, call the LLM (Step 10) and fill the answer.
 async function fillAIQuestions() {
   const profile = await chrome.storage.sync.get([
     'llm_base_url', 'llm_api_key', 'llm_model', 'profile_name',
@@ -374,7 +430,10 @@ async function fillAIQuestions() {
   showStatus('Filled ' + filled + '/' + questions.length + ' question(s)', filled > 0 ? 'success' : 'error');
 }
 
-// ── Fill Learned Radios ────────────────────────────────────────────
+// ── Fill Learned Radios (Step 11) ──────────────────────────────────
+// Reads learned_fields from storage. For each radio group on the page,
+// checks if the question text matches a stored key. If you previously
+// answered "Yes" to "Are you authorized to work?", it checks that button again.
 async function fillLearnedRadios() {
   try {
     const result = await chrome.storage.sync.get('learned_fields');
@@ -417,6 +476,12 @@ async function fillLearnedRadios() {
 
 // ── Shared Helpers ─────────────────────────────────────────────────
 
+// Step 4: build a value dictionary from your stored profile data.
+// Reads raw values from Chrome storage (set when you extracted your resume),
+// splits composite values (full name → first+last, address → street+city+country),
+// then merges learned corrections from previous sessions.
+// Returns {first_name, last_name, email, phone, country, ...} — keys that
+// match what FormDetector.identify() returns as field.name.
 async function buildFillMap() {
   const profile = await chrome.storage.sync.get([
     'profile_name', 'profile_email', 'profile_phone', 'profile_linkedin',
@@ -468,8 +533,12 @@ function skipFieldForType(field, value) {
   return false;
 }
 
-// ── Learning ───────────────────────────────────────────────────────
-
+// ── Learning (Step 8) ──────────────────────────────────────────────
+// After filling fields, attach a one-time blur listener to each element.
+// If you edit the value and leave the field, the listener compares the
+// new value against what JC filled. If different, it saves the correction
+// to learned_fields in storage. Next session, buildFillMap() (Step 4)
+// merges these corrections over your profile defaults.
 function listenForCorrections(filledEls) {
   const seen = new WeakSet();
   for (const el of filledEls) {
@@ -700,8 +769,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ── SPA Observer ───────────────────────────────────────────────────
-// Re-detect on DOM changes. Only re-injects buttons + updates panel.
-// NO auto-fill.
+// Watches for DOM mutations (elements added/removed). When Oracle
+// re-renders a section, this re-runs detect() (Step 2-3) and injects
+// per-field "F" buttons on new fields. Skips if __jcFilling is active
+// (Step 1 guard) to avoid interfering with fill operations.
 let detectTimeout = null;
 const observer = new MutationObserver(function() {
   clearTimeout(detectTimeout);

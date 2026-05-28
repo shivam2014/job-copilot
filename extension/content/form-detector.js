@@ -1,10 +1,38 @@
-// Form Detector — identifies form fields on job application pages
+// ═══════════════════════════════════════════════════════════════
+// Form Detector — THE DETECTION AND FILL ENGINE
+// ═══════════════════════════════════════════════════════════════
+//
+// FILE ROLE:
+//   This file is the pure engine. It has two responsibilities:
+//   1. DETECTION: identify what fields exist on the page and what they are
+//   2. FILLING: take a field and a value, and make the value stick
+//
+// WHY THIS FILE EXISTS SEPARATELY:
+//   This file has no opinions about UI, timing, storage, or user interaction.
+//   It doesn't know about the panel, the popup, the learning system, or the
+//   SPA observer. Content.js (the orchestrator) decides WHEN to call it and
+//   WHAT data to feed it. This separation means you can test the fill engine
+//   against mock DOMs without needing Chrome storage or the panel.
+//
+// DETECTION FLOW (Steps 2-3 in the execution trace):
+//   detect() scans every <input>, <textarea>, <select> on the page.
+//   For each element, identify(el) reads six sources (label, autocomplete,
+//   aria-label, name, id, placeholder), runs them against fieldPatterns
+//   using weighted word-boundary regex scoring, and returns the field identity.
+//
+// FILL FLOW (Steps 6-7 in the execution trace):
+//   fillField(field, value) inspects the element type and routes:
+//     <select>           → fillSelect()         (4-phase option matching)
+//     Oracle combobox    → fillOracleCombobox()  (4-strategy Knockout chain)
+//     everything else    → fillTextInput()       (4-strategy chain)
+// ═══════════════════════════════════════════════════════════════
 
 const FormDetector = {
-// FormDetector is the core detection + filling engine.
-// It is NOT attached to window — it lives in the content script isolated world.
-// Content script (content.js) calls FormDetector.detect() and FormDetector.fillField().
-  // Map common field patterns to profile fields
+  // ── Step 3: The pattern dictionary ─────────────────────────────
+  // This is the dictionary that identify() scores against.
+  // Keys are profile field names (what buildFillMap() in content.js returns).
+  // Values are arrays of strings that might appear in a field's label, name,
+  // id, or autocomplete attribute. To support a new field type, add one entry here.
   fieldPatterns: {
     name: [
       'name',
@@ -108,11 +136,12 @@ const FormDetector = {
   // Field types that map to profile values
   personalFieldTypes: ['text', 'email', 'tel', 'url', 'number'],
 
-  // Detect all form fields on the page
+  // ── Step 2: Field detection ─────────────────────────────────────
+  // Called by content.js init(), fillPersonal(), fillAIQuestions(), and the
+  // SPA observer. Scans every <input>, <textarea>, <select> on the page.
+  // For each element, calls identify(el) to determine what it is.
+  // Sorts results into four buckets: personal, questions, selects, files.
   detect() {
-  // Scans page for input, textarea, select elements.
-  // Each element goes through identify() which scores it against fieldPatterns.
-  // Returns: { personal: [...], questions: [...], files: [...], selects: [...], unknown: [...] }
     const fields = {
       personal: [],    // name, email, phone, etc.
       questions: [],   // textareas (custom questions)
@@ -155,11 +184,14 @@ const FormDetector = {
     return fields;
   },
 
-  // Identify a field's purpose
+  // ── Step 3: The scoring game ────────────────────────────────────
+  // Takes one DOM element. Reads six sources from it:
+  //   label text (weight 4), autocomplete (3), aria-label (2), name (1), id (1), placeholder (1)
+  // Concatenates all non-empty sources. For each pattern in fieldPatterns,
+  // runs a word-boundary regex test against each source with its weight.
+  // Score = (weight × 100) + pattern_length. Highest total score wins.
+  // Returns: {name: "email", label: "Email", el: the element, ...}
   identify(el) {
-  // Scores a single element against all fieldPatterns to determine its purpose.
-  // SOURCES (with weights): labelText(4x), autocomplete(3x), ariaLabel(2x), name(1x), id(1x), placeholder(1x)
-  // Pattern with highest total score wins. Name parts get priority over generic name.
     const name = (el.name || '').toLowerCase().trim();
     const id = (el.id || '').toLowerCase().trim();
     const placeholder = (el.placeholder || '').toLowerCase().trim();
@@ -290,14 +322,11 @@ const FormDetector = {
     return el.closest('.apply-flow, .cx-select, [class*="oj-"]') !== null;
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  // fillField — Route to correct handler based on element type
-  // ═══════════════════════════════════════════════════════════════
-  // DISPATCH:
-  //   <select>           → fillSelect(value)
-  //   file input         → return false (can't programmatically set)
-  //   Oracle combobox    → fillOracleCombobox(el, value)  [4-strategy chain]
-  //   everything else    → fillTextInput(el, field, value) [2-4 strategy chain]
+  // ── Step 6: The router ──────────────────────────────────────────
+  // Called by content.js for each field that needs filling.
+  // Inspects the element type and routes to the right strategy.
+  // This is the only entry point for filling — content.js never calls
+  // the strategy functions directly.
   async fillField(field, value) {
     if (!field || !field.el) return false;
     const el = field.el;
@@ -323,7 +352,9 @@ const FormDetector = {
     return await this.fillTextInput(el, field, valueStr);
   },
 
-  // Fill a native select element
+  // ── Step 6a: Native <select> filling ───────────────────────────
+  // Tries four matching strategies against the dropdown's options:
+  // exact text, starts-with, word-boundary regex, substring.
   fillSelect(el, value) {
     const options = Array.from(el.options).filter(o => o.value !== '');
     const lowerValue = value.toLowerCase().trim();
@@ -367,14 +398,12 @@ const FormDetector = {
     return false;
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  // fillTextInput — Fill text/email/tel inputs (not comboboxes)
-  // ═══════════════════════════════════════════════════════════════
-  // STRATEGIES:
-  //   1. Direct DOM value + input/change events
-  //   2. Native value setter (Object.getOwnPropertyDescriptor setter)
-  //   3. Char-by-char typing (Oracle CX only, progressive value + input events)
-  //   4. InputEvent per-character (Oracle CX only, most compatible with Knockout)
+  // ── Step 7: Text input filling ──────────────────────────────────
+  // Tries up to four strategies in order. First success wins.
+  // Strategy 1: set el.value directly + dispatch events. Works on plain inputs.
+  // Strategy 2: use HTMLInputElement.prototype.value setter to bypass React/Vue.
+  // Strategy 3: (Oracle only) type character by character with input events.
+  // Strategy 4: (Oracle only) dispatch InputEvent(insertText) per character.
   async fillTextInput(el, field, value) {
     const fieldLabel = field.label || field.name || 'field';
     const isOracle = this.isOracleCXField(el);
@@ -474,9 +503,14 @@ const FormDetector = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════
-// fillOracleCombobox — 4-strategy fallback chain for Knockout
-// ═══════════════════════════════════════════════════════════════
+// ── Step 6b: Oracle combobox filling ──────────────────────────────
+// Oracle CX uses Knockout.js which actively rejects synthetic JS events.
+// Setting el.value = "Poland" works for a moment but Knockout clears it
+// asynchronously. Four strategies are tried in order:
+//   1. Click combobox → find dropdown option → click it
+//   2. Native setter + Enter + 300ms verify (Knockout may clear after)
+//   3. Character-by-character typing (Knockout sees each char as human input)
+//   4. InputEvent per-character (real browser event, no framework can filter it)
 // STRATEGIES (tried in order, first success wins):
 //   1. DOM click → find dropdown option → click it
 //   2. Native value setter + Enter + 300ms async verification
