@@ -221,11 +221,13 @@ function updatePanel() {
 // Maybe you only want the name and email filled, not the AI questions.
 // Maybe you want to re-fill one field you cleared.
 function injectPerFieldButtons() {
+  // Remove ALL existing F buttons first (prevents duplicates on reload)
+  document.querySelectorAll('.jc-field-fill-btn').forEach(b => b.remove());
+
   const fields = FormDetector.detect();
   const allFields = [...fields.personal, ...fields.questions, ...fields.selects];
 
   for (const field of allFields) {
-    if (field.el.parentElement?.querySelector('.jc-field-fill-btn')) continue;
     if (field.el.type === 'file') continue;
 
     const btn = document.createElement('button');
@@ -239,10 +241,19 @@ function injectPerFieldButtons() {
       await fillSingleField(field);
     };
 
-    // Insert F button into the field's parent container (no wrapping).
-    // This preserves Oracle's layout — input + toggle stay siblings.
-    field.el.parentElement.style.position = 'relative';
-    field.el.parentElement.appendChild(btn);
+    // Insert F button inside parent container with absolute positioning.
+    // Parent gets position:relative so F button positions correctly.
+    // If field has a toggle button (combobox), offset F button to avoid overlap.
+    const parent = field.el.parentElement;
+    if (getComputedStyle(parent).position === 'static') {
+      parent.style.position = 'relative';
+    }
+    // Combobox fields: move F button left to avoid toggle overlap.
+    // Toggle occupies ~25px on the right edge. F button at right:40px clears it.
+    if (field.el.getAttribute('role') === 'combobox') {
+      btn.style.right = '70px';
+    }
+    parent.appendChild(btn);
   }
 }
 
