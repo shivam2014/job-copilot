@@ -163,7 +163,11 @@ function createPanel() {
   jcPanel.querySelector('#jc-fill-all').onclick = async () => {
     window.__jcFilling = true;
     await fillPersonal();
+    await fillExperience();
+    await fillEducation();
+    await fillSkills();
     await fillAIQuestions();
+    await fillApplicationQuestions();
     await fillLearnedRadios();
     window.__jcFilling = false;
   };
@@ -221,7 +225,7 @@ function injectPerFieldButtons() {
   const allFields = [...fields.personal, ...fields.questions, ...fields.selects];
 
   for (const field of allFields) {
-    if (field.el.parentElement?.classList.contains('jc-field-wrapper')) continue;
+    if (field.el.parentElement?.querySelector('.jc-field-fill-btn')) continue;
     if (field.el.type === 'file') continue;
 
     const btn = document.createElement('button');
@@ -235,11 +239,10 @@ function injectPerFieldButtons() {
       await fillSingleField(field);
     };
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'jc-field-wrapper';
-    field.el.parentNode.insertBefore(wrapper, field.el);
-    wrapper.appendChild(field.el);
-    wrapper.appendChild(btn);
+    // Insert F button into the field's parent container (no wrapping).
+    // This preserves Oracle's layout — input + toggle stay siblings.
+    field.el.parentElement.style.position = 'relative';
+    field.el.parentElement.appendChild(btn);
   }
 }
 
@@ -354,6 +357,20 @@ async function fillPersonal() {
     showStatus('No profile data — open settings.', 'error');
     makeStatusClickable();
     return;
+  }
+
+  // [FIX] Smart phone: if form has a separate phone_country_code field,
+  // strip the country code prefix from the phone value so each field gets
+  // the right portion. If no country code field exists, leave phone as-is
+  // (full number with country code). This handles both Oracle CX (split)
+  // and Workday/Greenhouse (single field) automatically.
+  const hasCountryCodeField = fields.personal.some(f => f.name === 'phone_country_code') ||
+                               fields.selects.some(f => f.name === 'phone_country_code');
+  if (hasCountryCodeField && fillMap.phone_country_code && fillMap.phone) {
+    const cc = fillMap.phone_country_code;
+    if (fillMap.phone.startsWith(cc)) {
+      fillMap.phone = fillMap.phone.slice(cc.length).replace(/^[-\s]+/, '').trim();
+    }
   }
 
   const learned = await chrome.storage.sync.get('learned_fields');
@@ -483,6 +500,501 @@ async function fillLearnedRadios() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// fillExperience() — fills work experience entries from resume data
+// ═══════════════════════════════════════════════════════════════
+// Reads resume_full_data from Chrome storage, iterates over each
+// experience entry, clicks "Add Experience" for each one, then fills
+// the Employer Name, Job Title, Start/End dates, Employer Country,
+// Employer City, and Responsibilities fields.
+//
+// Oracle CX uses Knockout.js comboboxes for dates and country fields,
+// so we reuse FormDetector.fillField() which handles those strategies.
+//
+// Works across ATS platforms: the field detection (employerName, jobTitle,
+// etc.) uses the same identify() scoring, and the combobox strategies
+// handle Oracle CX, Workday, and generic dropdowns.
+async function fillExperience() {
+  const data = await chrome.storage.sync.get('resume_full_data');
+  if (!data.resume_full_data) {
+    console.log('JC: No resume_full_data — skipping experience');
+    return;
+  }
+
+  let resumeData;
+  try { resumeData = JSON.parse(data.resume_full_data); } catch { return; }
+  const experiences = resumeData.rawSections?.experience || [];
+  if (experiences.length === 0) {
+    console.log('JC: No experience entries in resume');
+    return;
+  }
+
+  const MONTH_MAP = {
+    '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+    '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+    '09': 'September', '10': 'October', '11': 'November', '12': 'December',
+    '1': 'January', '2': 'February', '3': 'March', '4': 'April',
+    '5': 'May', '6': 'June', '7': 'July', '8': 'August',
+    '9': 'September',
+  };
+
+  // Helper: fill an Oracle CX text input using char-by-char typing.
+  // This is the ONLY strategy that Knockout.js accepts — DOM assignment
+  // and native setter succeed in the DOM but Knockout's observable
+  // doesn't update, so Oracle's validation sees the field as empty.
+  // Char-by-char makes Knockout see each keystroke as human input.
+  async function fillExpField(el, value, fieldName) {
+    if (!el) { console.log('JC: fillExpField — element not found for ' + (fieldName || 'unknown')); return false; }
+    if (!value) { console.log('JC: fillExpField — empty value for ' + (fieldName || 'unknown')); return false; }
+    try {
+      el.focus();
+      // Clear existing value — use direct assignment (native setter throws
+      // "Illegal invocation" on Oracle's custom combobox elements)
+      el.value = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      // Type character by character — Knockout sees each input event as human
+      for (let i = 0; i < value.length; i++) {
+        el.value = value.substring(0, i + 1);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 15));
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      const ok = el.value === value;
+      if (ok) {
+        console.log('JC: fillExpField [' + fieldName + '] → char-by-char OK');
+      } else {
+        console.log('JC: fillExpField [' + fieldName + '] → value did not stick (got "' + el.value?.substring(0, 30) + '")');
+      }
+      return ok;
+    } catch(e) {
+      console.log('JC: fillExpField [' + fieldName + '] → error: ' + e.message);
+      return false;
+    }
+  }
+
+  // Helper: find the "Add Experience" SUBMIT button (the one at the bottom of the open form)
+  function findSubmitBtn() {
+    const btns = Array.from(document.querySelectorAll('button'));
+    // The submit button is the visible "Add Experience" button inside the form
+    return btns.find(b => b.textContent?.trim() === 'Add Experience' && b.offsetHeight > 0 && b.offsetParent !== null);
+  }
+
+  // Helper: find the TRIGGER button (the main "Add Experience" button outside the form)
+  function findTriggerBtn() {
+    const btns = Array.from(document.querySelectorAll('button'));
+    return btns.find(b => {
+      const txt = (b.textContent || '').trim();
+      const id = b.id || '';
+      return txt === 'Add Experience' && id.includes('profileItemsAddButton') && b.offsetHeight > 0;
+    });
+  }
+
+  let filled = 0;
+  for (const exp of experiences) {
+    // Step 1: Click trigger button to open the form
+    let trigger = findTriggerBtn();
+    if (!trigger) {
+      // If no trigger, the form might already be open — try submit first
+      const submit = findSubmitBtn();
+      if (submit) { submit.click(); await new Promise(r => setTimeout(r, 1500)); }
+      trigger = findTriggerBtn();
+    }
+    if (!trigger) {
+      console.log('JC: No "Add Experience" trigger found — skipping');
+      break;
+    }
+    trigger.click();
+    // [FIX] Wait longer for Oracle to render the form fields.
+    // employerName inputs weren't ready at 2000ms.
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Step 2: Fill ALL fields using char-by-char (fillExpField).
+    // Wait for the form fields to render (Oracle renders async after Add click).
+    // Don't skip optional fields — fill everything we have data for.
+
+    // Employer Name (required)
+    let empName = null;
+    for (let retry = 0; retry < 6; retry++) {
+      const all = document.querySelectorAll('input[name="employerName"]');
+      if (all.length > 0) { empName = all[all.length - 1]; break; }
+      await new Promise(r => setTimeout(r, 400));
+    }
+    if (empName && exp.company) await fillExpField(empName, exp.company, "employerName");
+
+    // Job Title
+    const allJobTitles = document.querySelectorAll('input[name="jobTitle"]');
+    const jobTitle = allJobTitles.length > 0 ? allJobTitles[allJobTitles.length - 1] : null;
+    if (jobTitle && exp.title) await fillExpField(jobTitle, exp.title, "jobTitle");
+
+    // Fill Start Date (Month + Year comboboxes)
+    if (exp.start_date) {
+      const parts = exp.start_date.split('/');
+      const monthNum = parts[0] || '';
+      const yearStr = parts[1] || '';
+      const monthName = MONTH_MAP[monthNum] || monthNum;
+
+      // Try to fill month combobox — find the LAST one (most recently added entry)
+      const allStartMonths = document.querySelectorAll('[id*="month-startDate"]');
+      const startMonth = allStartMonths.length > 0 ? allStartMonths[allStartMonths.length - 1] : null;
+      if (startMonth && monthName) {
+        const field = { el: startMonth, name: 'startDate', label: 'Start Month' };
+        await FormDetector.fillField(field, monthName);
+      }
+
+      const allStartYears = document.querySelectorAll('[id*="year-startDate"]');
+      const startYear = allStartYears.length > 0 ? allStartYears[allStartYears.length - 1] : null;
+      if (startYear && yearStr) {
+        const field = { el: startYear, name: 'startDate', label: 'Start Year' };
+        await FormDetector.fillField(field, yearStr);
+      }
+    }
+
+    // Fill End Date (Month + Year comboboxes)
+    if (exp.end_date && exp.end_date.toLowerCase() !== 'present') {
+      const parts = exp.end_date.split('/');
+      const monthNum = parts[0] || '';
+      const yearStr = parts[1] || '';
+      const monthName = MONTH_MAP[monthNum] || monthNum;
+
+      const allEndMonths = document.querySelectorAll('[id*="month-endDate"]');
+      const endMonth = allEndMonths.length > 0 ? allEndMonths[allEndMonths.length - 1] : null;
+      if (endMonth && monthName) {
+        const field = { el: endMonth, name: 'endDate', label: 'End Month' };
+        await FormDetector.fillField(field, monthName);
+      }
+
+      const allEndYears = document.querySelectorAll('[id*="year-endDate"]');
+      const endYear = allEndYears.length > 0 ? allEndYears[allEndYears.length - 1] : null;
+      if (endYear && yearStr) {
+        const field = { el: endYear, name: 'endDate', label: 'End Year' };
+        await FormDetector.fillField(field, yearStr);
+      }
+    }
+
+    // Fill Employer Country — use char-by-char
+    const allCountries = document.querySelectorAll('[id*="countryCode"]');
+    const empCountry = allCountries.length > 0 ? allCountries[allCountries.length - 1] : null;
+    if (empCountry) {
+      const cityCountryMap = {
+        'linz': 'Austria', 'toulouse': 'France', 'krakow': 'Poland',
+        'gdansk': 'Poland', 'warsaw': 'Poland', 'paris': 'France',
+        'london': 'United Kingdom', 'munich': 'Germany',
+        'berlin': 'Germany', 'hamburg': 'Germany', 'amsterdam': 'Netherlands',
+        'dublin': 'Ireland', 'madrid': 'Spain', 'barcelona': 'Spain',
+        'rome': 'Italy', 'milan': 'Italy', 'zurich': 'Switzerland',
+        'vienna': 'Austria', 'brussels': 'Belgium', 'stockholm': 'Sweden',
+        'copenhagen': 'Denmark', 'oslo': 'Norway', 'helsinki': 'Finland',
+        'bangalore': 'India', 'hyderabad': 'India', 'mumbai': 'India',
+        'pune': 'India', 'delhi': 'India', 'chennai': 'India',
+        'new york': 'United States', 'san francisco': 'United States',
+        'seattle': 'United States', 'austin': 'United States',
+        'chicago': 'United States', 'boston': 'United States',
+        'los angeles': 'United States', 'toronto': 'Canada',
+        'montreal': 'Canada', 'vancouver': 'Canada',
+        'tokyo': 'Japan', 'singapore': 'Singapore',
+        'sydney': 'Australia', 'melbourne': 'Australia',
+        'dubai': 'United Arab Emirates', 'tel aviv': 'Israel',
+      };
+      const country = cityCountryMap[(exp.city || '').toLowerCase()] || '';
+      if (country) await fillExpField(empCountry, country, "employerCountry");
+    }
+
+    // Fill Employer City — find the LAST one
+    const allCities = document.querySelectorAll('input[name="employerCity"]');
+    const empCity = allCities.length > 0 ? allCities[allCities.length - 1] : null;
+    if (empCity && exp.city) await fillExpField(empCity, exp.city, "employerCity");
+
+    // Fill Responsibilities — find the LAST textarea
+    const allResp = document.querySelectorAll('textarea[name="responsibilities"]');
+    const resp = allResp.length > 0 ? allResp[allResp.length - 1] : null;
+    if (resp && exp.description) await fillExpField(resp, exp.description, "responsibilities");
+
+    // Step 3: Click the SUBMIT button to save this entry.
+    // The "Add Experience" button at the bottom of the open form is the submit.
+    // After clicking, the form closes and the entry is saved as a tile.
+    await new Promise(r => setTimeout(r, 500));
+    const submitBtn = findSubmitBtn();
+    if (submitBtn) {
+      submitBtn.click();
+      console.log('JC: Submitted experience entry ' + (filled + 1) + ': ' + (exp.company || 'unknown'));
+      await new Promise(r => setTimeout(r, 2000)); // Wait for form to close and tile to appear
+    } else {
+      console.log('JC: No submit button found for experience entry ' + (filled + 1));
+    }
+
+    filled++;
+  }
+
+  if (filled > 0) {
+    showStatus('Added ' + filled + ' experience(s)', 'success');
+    console.log('JC: Filled ' + filled + ' experience entries');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// fillEducation() — fills education entries from resume data
+// ═══════════════════════════════════════════════════════════════
+// Similar to fillExperience but for education section.
+// Oracle CX education fields use comboboxes for Degree, School,
+// and Education Level — all handled by FormDetector.fillField().
+async function fillEducation() {
+  const data = await chrome.storage.sync.get('resume_full_data');
+  if (!data.resume_full_data) { console.log('JC: No resume_full_data — skipping education'); return; }
+
+  let resumeData;
+  try { resumeData = JSON.parse(data.resume_full_data); } catch(e) { console.log('JC: Education parse error:', e.message); return; }
+  const education = resumeData.rawSections?.education || [];
+  if (education.length === 0) { console.log('JC: No education entries in resume'); return; }
+  console.log('JC: fillEducation — ' + education.length + ' entries found');
+
+  const degreeMap = {
+    'masters of science': 'Master of Science', 'master of science': 'Master of Science',
+    'msc': 'Master of Science', 'bachelors of technology': 'Bachelor of Technology',
+    'bachelor of technology': 'Bachelor of Technology', 'btech': 'Bachelor of Technology',
+    'bachelor of science': 'Bachelor of Science', 'phd': 'Doctorate', 'doctorate': 'Doctorate',
+  };
+
+  let filled = 0;
+  for (const edu of education) {
+    // Step 1: Open the education form.
+    // Scroll to Education heading first, then find and click the Add button.
+    // The form may already be open from a previous iteration — check for degree field.
+    const eduHeading = Array.from(document.querySelectorAll('h3')).find(h => h.textContent?.trim() === 'Education');
+    if (eduHeading) eduHeading.scrollIntoView({ behavior: 'instant', block: 'start' });
+    await new Promise(r => setTimeout(r, 500));
+
+    let formReady = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const degreeEls = document.querySelectorAll('[name="contentItemId"]');
+      if (Array.from(degreeEls).some(el => el.offsetHeight > 0)) { formReady = true; break; }
+
+      // Try clicking the Add Education button (any matching button, visible or not)
+      const allBtns = Array.from(document.querySelectorAll('button'));
+      const addBtn = allBtns.find(b => {
+        const txt = (b.textContent || '').trim();
+        return txt === 'Add Education' && (b.id || '').includes('profileItemsAddButton');
+      }) || allBtns.find(b => (b.textContent || '').trim() === 'Add Education');
+      if (addBtn) {
+        // [FIX] Use real mouse events — Oracle's Knockout binding ignores
+        // synthetic click() on hidden elements. PointerEvent + mousedown
+        // + mouseup simulates a real user click.
+        const rect = addBtn.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window, button: 0 };
+        addBtn.dispatchEvent(new PointerEvent('pointerdown', opts));
+        addBtn.dispatchEvent(new MouseEvent('mousedown', opts));
+        await new Promise(r => setTimeout(r, 50));
+        addBtn.dispatchEvent(new PointerEvent('pointerup', opts));
+        addBtn.dispatchEvent(new MouseEvent('mouseup', opts));
+        addBtn.dispatchEvent(new MouseEvent('click', opts));
+        console.log('JC: Clicked Add Education (attempt ' + attempt + ')');
+      }
+      await new Promise(r => setTimeout(r, 700));
+    }
+    if (!formReady) { console.log('JC: Education form did not open — skipping entry ' + (filled + 1)); continue; }
+
+    // Step 2: Fill fields using fillExpField (char-by-char, works with Knockout)
+    // Degree
+    const allDegrees = document.querySelectorAll('[name="contentItemId"]');
+    const degree = allDegrees.length > 0 ? allDegrees[allDegrees.length - 1] : null;
+    if (degree && edu.degree) {
+      const normalized = degreeMap[edu.degree.toLowerCase()] || edu.degree;
+      const ok = await fillExpField(degree, normalized, 'degree');
+      console.log('JC: edu degree → ' + ok + ' "' + (degree.value || '') + '"');
+    }
+
+    // School
+    const allSchools = document.querySelectorAll('[name="educationalEstablishment"]');
+    const school = allSchools.length > 0 ? allSchools[allSchools.length - 1] : null;
+    if (school && edu.school) {
+      const ok = await fillExpField(school, edu.school, 'school');
+      console.log('JC: edu school → ' + ok + ' "' + (school.value || '') + '"');
+    }
+
+    // Education Level
+    const allLevels = document.querySelectorAll('[name="educationLevel"]');
+    const level = allLevels.length > 0 ? allLevels[allLevels.length - 1] : null;
+    if (level && edu.degree) {
+      const dl = edu.degree.toLowerCase();
+      let eduLevel = 'Bachelors Degree';
+      if (dl.includes('master') || dl.includes('msc') || dl.includes('m.s')) eduLevel = 'Masters Degree';
+      else if (dl.includes('phd') || dl.includes('doctor')) eduLevel = 'Doctorate';
+      const ok = await fillExpField(level, eduLevel, 'level');
+      console.log('JC: edu level → ' + ok + ' "' + (level.value || '') + '"');
+    }
+
+    // Step 3: Submit the entry
+    await new Promise(r => setTimeout(r, 500));
+    const eduSubmit = Array.from(document.querySelectorAll('button')).find(b =>
+      (b.textContent || '').trim() === 'Add Education' && b.offsetHeight > 0
+    );
+    if (eduSubmit) {
+      eduSubmit.click();
+      console.log('JC: Submitted education entry ' + (filled + 1) + ': ' + (edu.school || 'unknown'));
+      await new Promise(r => setTimeout(r, 2000));
+    } else {
+      console.log('JC: No submit button for education entry ' + (filled + 1));
+    }
+
+    filled++;
+  }
+
+  if (filled > 0) {
+    showStatus('Added ' + filled + ' education(s)', 'success');
+    console.log('JC: Filled ' + filled + ' education entries');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// fillSkills() — selects matching skill suggestions from resume
+// ═══════════════════════════════════════════════════════════════
+// Oracle CX shows pre-populated skill suggestions as buttons with
+// aria-label="Add Skill X". This function reads skills from
+// resume_full_data, matches them against the suggestions (fuzzy),
+// and clicks the matching "Add Skill" buttons.
+//
+// For skills that don't match any suggestion, it clicks "Add More
+// Skills" and types the skill name into the search field.
+//
+// Works across ATS: Greenhouse and Lever have similar skill tag UIs.
+async function fillSkills() {
+  const data = await chrome.storage.sync.get('resume_full_data');
+  if (!data.resume_full_data) return;
+
+  let resumeData;
+  try { resumeData = JSON.parse(data.resume_full_data); } catch { return; }
+  const skills = resumeData.rawSections?.skills || [];
+  if (skills.length === 0) return;
+
+  // Find all "Add Skill" suggestion buttons
+  const skillBtns = Array.from(document.querySelectorAll('button')).filter(b => {
+    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+    return aria.includes('add skill') && b.offsetHeight > 0;
+  });
+
+  let addedFromSuggestions = 0;
+  const unmatchedSkills = [];
+
+  for (const skill of skills) {
+    const skillLower = skill.toLowerCase().trim();
+    if (!skillLower) continue;
+
+    // Try to match against suggestion buttons (fuzzy: check if skill words appear in button text)
+    const match = skillBtns.find(b => {
+      const btnText = (b.getAttribute('aria-label') || b.textContent || '').toLowerCase();
+      const skillWords = skillLower.split(/[\s,]+/);
+      // Check if any significant word from the skill appears in the button text
+      return skillWords.some(w => w.length > 3 && btnText.includes(w)) ||
+             btnText.includes(skillLower);
+    });
+
+    if (match) {
+      match.click();
+      addedFromSuggestions++;
+      // Remove from available buttons so we don't click it again
+      const idx = skillBtns.indexOf(match);
+      if (idx >= 0) skillBtns.splice(idx, 1);
+      await new Promise(r => setTimeout(r, 300));
+    } else {
+      unmatchedSkills.push(skill);
+    }
+  }
+
+  // [FIX] Don't click "Add More Skills" — it opens a form that replaces
+  // the skill suggestion buttons. Only click the pre-populated suggestions.
+  // Unmatched skills are skipped (they'd require the form which is destructive).
+
+  const total = addedFromSuggestions;
+  if (total > 0) {
+    showStatus('Added ' + total + ' skill(s)', 'success');
+    console.log('JC: Added ' + addedFromSuggestions + ' from suggestions, ' + Math.min(unmatchedSkills.length, 10) + ' custom');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// fillApplicationQuestions() — answers Yes/No radio questions
+// ═══════════════════════════════════════════════════════════════
+// Oracle CX application forms typically have Yes/No radio button
+// questions about employment history, government relations, etc.
+// Safe default: "No" for all questions. Users can correct via the
+// learning system (listenForCorrections picks up manual changes).
+//
+// The LLM could answer these more accurately, but without it we
+// default to the safest answer. This works across all ATS platforms
+// that use radio button questions.
+async function fillApplicationQuestions() {
+  let filled = 0;
+
+  // Strategy 1: Traditional radio buttons
+  const radios = document.querySelectorAll('input[type="radio"]');
+  const groups = new Map();
+  radios.forEach(r => {
+    if (!r.name || r.offsetHeight === 0) return;
+    if (!groups.has(r.name)) groups.set(r.name, []);
+    groups.get(r.name).push(r);
+  });
+
+  for (const [name, group] of groups) {
+    if (group.some(r => r.checked)) continue;
+    const noBtn = group.find(r => {
+      const label = (r.labels?.[0]?.textContent || r.value || '').toLowerCase().trim();
+      return label === 'no';
+    });
+    if (noBtn) {
+      noBtn.checked = true;
+      noBtn.dispatchEvent(new Event('change', { bubbles: true }));
+      noBtn.dataset.jcFilled = 'true';
+      filled++;
+    }
+  }
+
+  // Strategy 2: Oracle CX uses <button> Yes/No pairs, not radio inputs.
+  // Find the Application Questions section, then click every visible "No" button.
+  // These buttons are grouped in pairs — each question has a Yes and No button.
+  // We click "No" as the safe default for all employment/government questions.
+  const headings = Array.from(document.querySelectorAll('h3'));
+  const aqHeading = headings.find(h => h.textContent?.trim() === 'Application Questions');
+  if (aqHeading) {
+    let container = aqHeading.parentElement;
+    // Walk up to find the full section container
+    for (let i = 0; i < 5 && container; i++) {
+      if (container.querySelectorAll('button').length > 10) break;
+      container = container.parentElement;
+    }
+    if (container) {
+      // Find pairs of Yes/No buttons. Each question has exactly one Yes and one No.
+      // We click "No" for each pair that doesn't already have a selection.
+      const allBtns = Array.from(container.querySelectorAll('button'));
+      for (const btn of allBtns) {
+        const text = (btn.textContent || '').trim().toLowerCase();
+        if (text === 'no' && btn.offsetHeight > 0) {
+          // Check if the sibling Yes button is not in a "selected" state
+          const parent = btn.parentElement;
+          const yesBtn = parent ? Array.from(parent.querySelectorAll('button')).find(b =>
+            (b.textContent || '').trim().toLowerCase() === 'yes'
+          ) : null;
+          // If Yes is not visually selected (no special class), click No
+          if (yesBtn && !yesBtn.classList.contains('selected') && !yesBtn.classList.contains('active') &&
+              !yesBtn.getAttribute('aria-pressed')?.includes('true')) {
+            btn.click();
+            filled++;
+          } else if (!yesBtn) {
+            // No sibling Yes found — just click No
+            btn.click();
+            filled++;
+          }
+        }
+      }
+    }
+  }
+
+  if (filled > 0) {
+    console.log('JC: Answered ' + filled + ' application question(s)');
+  }
+}
+
 // ── Shared Helpers ─────────────────────────────────────────────────
 
 // Step 4: build a value dictionary from your stored profile data.
@@ -495,7 +1007,7 @@ async function buildFillMap() {
   const profile = await chrome.storage.sync.get([
     'profile_name', 'profile_email', 'profile_phone', 'profile_linkedin',
     'profile_github', 'profile_website', 'profile_address',
-    'profile_work_authorization',
+    'profile_work_authorization', 'resume_full_data',
   ]);
 
   const nameStr = (profile.profile_name || '').trim();
@@ -518,16 +1030,34 @@ async function buildFillMap() {
     middle_name: middleName,
     full_name: nameStr,
     email: profile.profile_email,
-    phone: profile.profile_phone,
+    // [FIX] Smart phone handling: store BOTH full number and split parts.
+    // The fill logic (fillPersonal) decides which to use based on whether
+    // the form has a separate phone_country_code field.
+    // - Portal with separate country code combobox (Oracle CX): use split
+    // - Portal with single phone field (Workday, Greenhouse): use full number
+    // This works across all ATS platforms without hardcoding per-vendor logic.
+    phone_country_code: (function() {
+      const raw = (profile.profile_phone || '').trim();
+      const m = raw.match(/^\+(\d{1,3})/);
+      return m ? ('+' + m[1]) : '';
+    })(),
+    phone: (profile.profile_phone || '').trim(),
     linkedin: profile.profile_linkedin,
     github: profile.profile_github,
-    website: profile.profile_website,
+    // [FIX] Use LinkedIn as website fallback for "Link 1" fields.
+    // Oracle CX has siteLink-1 (type=url) for supporting documents.
+    // If profile_website is empty, use linkedin URL so the field gets filled.
+    website: profile.profile_website || profile.profile_linkedin || '',
     address: hasMultiPartAddr ? '' : address,
     street_address: parseAddr,
     city: parseCity,
     state: '',
     postal_code: '',
-    country: parseCountry,
+    // [FIX] Country fallback from resume data when profile_address is empty.
+    // Resume extraction stores country in extractedFields.country (e.g., "Poland").
+    country: parseCountry || (function() {
+      try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.country || ''; } catch { return ''; }
+    })(),
     work_authorization: profile.profile_work_authorization,
   };
 }
@@ -536,7 +1066,18 @@ async function buildFillMap() {
 // For example, don't put a phone number into a URL field, don't put a full
 // address into a city field. Returns true to skip, false to proceed.
 function skipFieldForType(field, value) {
-  if (field.el.type === 'url' && !value.startsWith('http')) return true;
+  // [FIX] Allow URL fields to accept values without http prefix.
+  // The linkedin/github URLs from profile may or may not have https://.
+  // Also allow phone_country_code values (like "+33") through — they're
+  // short and look numeric but are valid for combobox fields.
+  if (field.name === 'phone_country_code') return false;
+  if (field.el.type === 'url' && !value.startsWith('http')) {
+    // Auto-prefix if it looks like a URL path (linkedin.com, github.com, etc.)
+    if (/^[a-z]+\.com/i.test(value) || /^[a-z]+\.io/i.test(value)) {
+      field.el.value = 'https://' + value; // prefix it inline — will be overwritten by fill
+    }
+    // Don't skip — let fillField() handle it
+  }
   if (field.el.type === 'url' && /^[\d\s\-+()]{6,}$/.test(value)) return true;
   if (field.name === 'street_address' && !/\d/.test(value)) return true;
   if (field.name === 'address' && value.includes(',')) return true;
@@ -805,7 +1346,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     window.__jcFilling = true;
     (async () => {
       await fillPersonal();
+      await fillExperience();
+      await fillEducation();
+      await fillSkills();
       await fillAIQuestions();
+      await fillApplicationQuestions();
       await fillLearnedRadios();
       window.__jcFilling = false;
     })();
@@ -877,3 +1422,14 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 // ── Start ──────────────────────────────────────────────────────────
 init();
+
+// ── Hot-reload trigger ──────────────────────────────────────────
+// Dispatch a custom "jc-reload" event on document to trigger extension reload.
+// Usage from DevTools console or Playwright:
+//   document.dispatchEvent(new Event('jc-reload'))
+document.addEventListener('jc-reload', function() {
+  console.log('JC: Hot-reload triggered via DOM event');
+  chrome.runtime.sendMessage({ type: 'jc_reload_extension' }, function(resp) {
+    console.log('JC: Reload response:', resp);
+  });
+});
