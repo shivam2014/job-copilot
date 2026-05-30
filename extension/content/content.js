@@ -613,21 +613,38 @@ async function fillExperience() {
     '9': 'September',
   };
 
-  // Helper: fill an Oracle CX text input using char-by-char typing.
-  // This is the ONLY strategy that Knockout.js accepts — DOM assignment
-  // and native setter succeed in the DOM but Knockout's observable
-  // doesn't update, so Oracle's validation sees the field as empty.
-  // Char-by-char makes Knockout see each keystroke as human input.
+  // Helper: fill an Oracle CX text input.
+  // Strategy 1: Paste (InputEvent insertFromPaste) — fast, works for most fields.
+  // Strategy 2: Char-by-char fallback — slow but reliable for stubborn fields.
   async function fillExpField(el, value, fieldName) {
     if (!el) { console.log('JC: fillExpField — element not found for ' + (fieldName || 'unknown')); return false; }
     if (!value) { console.log('JC: fillExpField — empty value for ' + (fieldName || 'unknown')); return false; }
     try {
       el.focus();
-      // Clear existing value — use direct assignment (native setter throws
-      // "Illegal invocation" on Oracle's custom combobox elements)
+
+      // Strategy 1: Paste — fast
       el.value = '';
       el.dispatchEvent(new Event('input', { bubbles: true }));
-      // Type character by character — Knockout sees each input event as human
+      el.value = value;
+      el.dispatchEvent(new InputEvent('input', {
+        inputType: 'insertFromPaste',
+        data: value,
+        bubbles: true,
+        cancelable: true,
+      }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      await new Promise(r => setTimeout(r, 200));
+      if (el.value === value) {
+        console.log('JC: fillExpField [' + fieldName + '] → paste OK');
+        return true;
+      }
+
+      // Strategy 2: Char-by-char fallback
+      console.log('JC: fillExpField [' + fieldName + '] → paste failed, trying char-by-char');
+      el.focus();
+      el.value = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
       for (let i = 0; i < value.length; i++) {
         el.value = value.substring(0, i + 1);
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -639,7 +656,7 @@ async function fillExperience() {
       if (ok) {
         console.log('JC: fillExpField [' + fieldName + '] → char-by-char OK');
       } else {
-        console.log('JC: fillExpField [' + fieldName + '] → value did not stick (got "' + el.value?.substring(0, 30) + '")');
+        console.log('JC: fillExpField [' + fieldName + '] → value did not stick');
       }
       return ok;
     } catch(e) {
