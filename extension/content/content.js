@@ -1,3 +1,64 @@
+
+// ═══════════════════════════════════════════════════════════════
+// Inject CSS programmatically — more reliable than manifest CSS
+// ═══════════════════════════════════════════════════════════════
+(function injectJCStyles() {
+  if (document.querySelector('#jc-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'jc-styles';
+  style.textContent = `
+    #jc-float-btn {
+      position: fixed; bottom: 24px; right: 24px; z-index: 2147483647;
+      width: 48px; height: 48px; border-radius: 50%;
+      background: #3b82f6; color: white; border: none;
+      box-shadow: 0 4px 12px rgba(59,130,246,0.4);
+      cursor: pointer; font-size: 18px; font-weight: bold;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #jc-float-btn:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(59,130,246,0.5); }
+    #jc-panel {
+      position: fixed; bottom: 84px; right: 24px; z-index: 2147483647;
+      width: 320px; background: white; border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px; color: #1f2937; display: none; overflow: hidden;
+    }
+    #jc-panel.open { display: block; }
+    #jc-panel-header { padding: 12px 16px; background: #3b82f6; color: white; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+    #jc-panel-close { background: none; border: none; color: white; cursor: pointer; font-size: 18px; padding: 0 4px; }
+    #jc-panel-body { padding: 12px 16px; max-height: 400px; overflow-y: auto; }
+    .jc-stat { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f3f4f6; font-size: 12px; }
+    .jc-stat-label { color: #6b7280; }
+    .jc-stat-value { font-weight: 500; }
+    .jc-btn { width: 100% !important; padding: 12px 16px !important; border: none; border-radius: 8px; font-size: 13px !important; font-weight: 500 !important; cursor: pointer; margin-top: 10px; transition: background 0.2s; }
+    .jc-btn-primary { background: #3b82f6 !important; color: white !important; }
+    .jc-btn-primary:hover { background: #2563eb; }
+    .jc-btn-secondary { background: #f3f4f6 !important; color: #374151 !important; }
+    .jc-btn-secondary:hover { background: #e5e7eb; }
+    .jc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .jc-status { padding: 8px; margin-top: 10px; border-radius: 6px; font-size: 12px; text-align: center; }
+    .jc-status.success { background: #ecfdf5; color: #065f46; }
+    .jc-status.error { background: #fef2f2; color: #991b1b; }
+    .jc-status.info { background: #eff6ff; color: #1e40af; }
+    .jc-field-fill-btn {
+      position: absolute !important;
+      right: -28px !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      width: 22px; height: 22px; border: none; border-radius: 4px;
+      background: #3b82f6 !important; color: white !important;
+      cursor: pointer; font-size: 10px; font-weight: 700;
+      display: flex !important; align-items: center; justify-content: center;
+      opacity: 0.4; transition: opacity 0.15s, background 0.15s;
+      z-index: 999999; visibility: visible !important;
+    }
+    .jc-field-fill-btn:hover { opacity: 1; background: #2563eb !important; }
+    .jc-field-fill-btn:active { transform: translateY(-50%) scale(0.9); }
+  `;
+  document.head.appendChild(style);
+  console.log('JC: Styles injected');
+})();
 // ═══════════════════════════════════════════════════════════════
 // Content script — THE ORCHESTRATOR
 // ═══════════════════════════════════════════════════════════════
@@ -241,17 +302,20 @@ function injectPerFieldButtons() {
       await fillSingleField(field);
     };
 
-    // Insert F button inside parent container with absolute positioning.
-    // Parent gets position:relative so F button positions correctly.
-    // If field has a toggle button (combobox), offset F button to avoid overlap.
+    // Insert F button inside parent with absolute positioning.
+    // Override overflow:hidden on ancestor containers so F button
+    // renders OUTSIDE the field box to the right.
     const parent = field.el.parentElement;
     if (getComputedStyle(parent).position === 'static') {
       parent.style.position = 'relative';
     }
-    // Combobox fields: move F button left to avoid toggle overlap.
-    // Toggle occupies ~25px on the right edge. F button at right:40px clears it.
-    if (field.el.getAttribute('role') === 'combobox') {
-      btn.style.right = '70px';
+    // Override overflow:hidden on ALL ancestors up to body
+    let ancestor = parent;
+    while (ancestor && ancestor !== document.body) {
+      if (getComputedStyle(ancestor).overflow !== 'visible') {
+        ancestor.style.overflow = 'visible';
+      }
+      ancestor = ancestor.parentElement;
     }
     parent.appendChild(btn);
   }
@@ -1165,7 +1229,18 @@ async function saveLearnedCorrection(fieldName, value) {
 // Oracle's form has seven different kinds of clearable elements, each
 // requiring a different approach. This function handles all seven in sequence.
 function clearForm() {
-  if (!confirm('Clear all fields on this form? This cannot be undone.')) return;
+  // Use a custom in-page confirm instead of native confirm().
+  // Native confirm() gets auto-dismissed by CDP connections (Playwright).
+  const confirmed = window.__jcClearConfirmed || false;
+  if (!confirmed) {
+    // Show a custom confirmation in the JC panel status
+    showStatus('Click Clear All again to confirm.', 'info');
+    window.__jcClearConfirmed = true;
+    // Reset after 5 seconds if not confirmed
+    setTimeout(() => { window.__jcClearConfirmed = false; }, 5000);
+    return;
+  }
+  window.__jcClearConfirmed = false;
 
   let cleared = 0;
 

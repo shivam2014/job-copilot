@@ -150,10 +150,6 @@
 }
 
 .jc-field-fill-btn {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
   width: 22px;
   height: 22px;
   border: none;
@@ -163,13 +159,17 @@
   cursor: pointer;
   font-size: 10px;
   font-weight: 700;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   opacity: 0.4;
   transition: opacity 0.15s, background 0.15s;
   z-index: 999999;
+  margin-left: 4px;
   visibility: visible !important;
+  flex-shrink: 0;
+  vertical-align: middle;
+  margin-left: 4px;
 }
 
 
