@@ -124,3 +124,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
 });
+
+// ── Hot-reload support ──────────────────────────────────────────
+// During development, allow the content script to trigger an extension
+// reload by sending a "jc_reload_extension" message. This avoids
+// having to restart Chrome to pick up code changes.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'jc_reload_extension') {
+    console.log('JC: Hot-reloading extension...');
+    chrome.runtime.reload();
+    sendResponse({ ok: true });
+    return true;
+  }
+});
