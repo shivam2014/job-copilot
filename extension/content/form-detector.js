@@ -296,6 +296,41 @@ const FormDetector = {
       }
     }
 
+    // [FIX] Context-aware field routing overrides.
+    // These run AFTER the pattern scoring to handle edge cases where
+    // the scoring alone can't disambiguate fields. Works across
+    // Oracle CX, Workday, Greenhouse, Lever, and generic forms.
+
+    // (a) Phone combobox → phone_country_code:
+    // Oracle CX puts role="combobox" + name="phoneNumber" on the country
+    // code selector, not the actual phone input. If a field has combobox
+    // role and its identifiers match phone patterns, it's the country
+    // code — route it to phone_country_code instead of phone.
+    if (fieldName === 'phone' && el.getAttribute('role') === 'combobox') {
+      fieldName = 'phone_country_code';
+    }
+
+    // (b) Unlabeled tel input → phone:
+    // The actual phone number input on Oracle CX has type="tel" with no
+    // name, no label, no aria-label. It sits next to the country code
+    // combobox. Default it to "phone" so it gets filled with the local
+    // number portion. This also works on Workday and generic forms where
+    // a tel input without a label is always the phone field.
+    if (fieldName === 'unknown' && el.type === 'tel') {
+      fieldName = 'phone';
+      bestScore = 50; // low confidence but better than skipping
+    }
+
+    // (c) Unmatched URL input → website:
+    // Any URL-typed input on a job application form that didn't match
+    // linkedin/github/website patterns is still likely a personal link.
+    // Oracle CX uses name="siteLink-1" which doesn't contain "url" or
+    // "website" as a word boundary. This fallback catches it.
+    if (fieldName === 'unknown' && el.type === 'url') {
+      fieldName = 'website';
+      bestScore = 30;
+    }
+
     return {
       el: el,
       name: fieldName,
@@ -427,93 +462,52 @@ const FormDetector = {
     const fieldLabel = field.label || field.name || 'field';
     const isOracle = this.isOracleCXField(el);
     
-    // Strategy 1: Direct DOM value + events
-    el.focus();
-    el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    
-    if (el.value === value) {
-      el.blur();
-      console.log(`JC: fillField [${fieldLabel}] → DOM strategy OK`);
-      return true;
-    }
-    
-    // Strategy 2: Native value setter (works for React/Vue)
-    const nativeSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype, 'value'
-    )?.set;
-    if (nativeSetter) {
-      nativeSetter.call(el, value);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      
-      if (el.value === value) {
-        el.blur();
-        console.log(`JC: fillField [${fieldLabel}] → native setter OK`);
-        return true;
-      }
-    }
-    
-    // ── Oracle CX: Knockout-specific fallbacks ─────────────────
     if (isOracle) {
-      // Strategy 3: Character-by-character typing
-      console.log(`JC: fillField [${fieldLabel}] → DOM+setter failed, trying char-by-char`);
+      // [FIX] Oracle CX: use paste approach (InputEvent insertFromPaste).
+      // Much faster than char-by-char. Knockout accepts paste events.
+      el.focus();
+      console.log(`JC: fillField [${fieldLabel}] → Oracle CX, using paste`);
       try {
         el.focus();
-        const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-        if (ns) ns.call(el, '');
         el.value = '';
         el.dispatchEvent(new Event('input', { bubbles: true }));
-        
+        el.value = value;
+        el.dispatchEvent(new InputEvent('input', {
+          inputType: 'insertFromPaste',
+          data: value,
+          bubbles: true,
+          cancelable: true,
+        }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.blur();
+        await new Promise(r => setTimeout(r, 200));
+        if (el.value === value) {
+          console.log(`JC: fillField [${fieldLabel}] → paste OK`);
+          return true;
+        }
+        console.log(`JC: fillField [${fieldLabel}] → paste: value didn't stick, falling back to char-by-char`);
+      } catch(e) {
+        console.log(`JC: fillField [${fieldLabel}] → paste error: ${e.message}, falling back`);
+      }
+      
+      // Fallback: char-by-char
+      try {
+        el.focus();
+        el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
         for (let i = 0; i < value.length; i++) {
-          const cur = value.substring(0, i + 1);
-          if (ns) ns.call(el, cur);
-          el.value = cur;
+          el.value = value.substring(0, i + 1);
           el.dispatchEvent(new Event('input', { bubbles: true }));
           await new Promise(r => setTimeout(r, 20));
         }
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
         if (el.value === value) {
-          console.log(`JC: fillField [${fieldLabel}] → char-by-char OK`);
+          console.log(`JC: fillField [${fieldLabel}] → char-by-char fallback OK`);
           return true;
         }
-        console.log(`JC: fillField [${fieldLabel}] → char-by-char: value didn't stick`);
       } catch(e) {
-        console.log(`JC: fillField [${fieldLabel}] → char-by-char error: ${e.message}`);
-      }
-      
-      // Strategy 4: InputEvent per-character
-      console.log(`JC: fillField [${fieldLabel}] → trying InputEvent per-char`);
-      try {
-        el.focus();
-        const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-        if (ns) ns.call(el, '');
-        el.value = '';
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        for (const char of value) {
-          const cur = el.value + char;
-          if (ns) ns.call(el, cur);
-          el.value = cur;
-          el.dispatchEvent(new InputEvent('input', {
-            inputType: 'insertText',
-            data: char,
-            bubbles: true,
-            cancelable: true,
-          }));
-          await new Promise(r => setTimeout(r, 20));
-        }
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
-        if (el.value === value) {
-          console.log(`JC: fillField [${fieldLabel}] → InputEvent per-char OK`);
-          return true;
-        }
-        console.log(`JC: fillField [${fieldLabel}] → InputEvent per-char: value didn't stick`);
-      } catch(e) {
-        console.log(`JC: fillField [${fieldLabel}] → InputEvent per-char error: ${e.message}`);
+        console.log(`JC: fillField [${fieldLabel}] → char-by-char fallback error: ${e.message}`);
       }
     }
     
@@ -560,10 +554,10 @@ FormDetector.fillOracleCombobox = async function(el, value) {
   try {
     el.focus();
     el.click();
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 800));
     
     const valueLower = valueStr.toLowerCase().trim();
-    const selectors = ['.cx-select-option', '[role="option"]', '.oj-select-choice'];
+    const selectors = ['.cx-select-option', '[role="option"]', '.oj-select-choice', '.cx-select__list-item', '[role="gridcell"]'];
     let match = null;
     for (const sel of selectors) {
       const options = document.querySelectorAll(sel);
@@ -582,51 +576,61 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     
     if (match) {
       match.click();
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      el.blur();
-      console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy OK`);
-      return true;
+      await new Promise(r => setTimeout(r, 300));
+      // Oracle CX combobox: value is stored in toggle button text, not input value.
+      // Check both input value and toggle button text.
+      const toggle = document.getElementById(el.id + '-toggle-button');
+      const toggleText = toggle?.textContent?.trim()?.toLowerCase() || '';
+      const inputVal = el.value?.toLowerCase() || '';
+      if (inputVal === valueLower || toggleText === valueLower ||
+          toggleText.startsWith(valueLower) || valueLower.startsWith(toggleText)) {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.blur();
+        console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy OK (toggle="${toggleText}")`);
+        return true;
+      }
+      console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: option clicked but value not confirmed (input="${inputVal}" toggle="${toggleText}")`);
     }
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: no option found`);
   } catch(e) {
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy error: ${e.message}`);
   }
   
-  // Strategy 2: Native value setter + Enter + async verification
+  // Strategy 2: Paste approach (InputEvent insertFromPaste)
   try {
     el.focus();
-    const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (ns) ns.call(el, valueStr);
-    el.value = valueStr;
+    el.value = '';
     el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.value = valueStr;
+    el.dispatchEvent(new InputEvent('input', {
+      inputType: 'insertFromPaste',
+      data: valueStr,
+      bubbles: true,
+      cancelable: true,
+    }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
     el.blur();
     await new Promise(r => setTimeout(r, 300));
     if (el.value === valueStr) {
-      console.log(`JC: fillOracleCombobox [${fieldLabel}] → native setter OK`);
+      console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste OK`);
       return true;
     }
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → native setter: async check failed`);
+    console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste: value didn't stick`);
   } catch(e) {
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → native setter error: ${e.message}`);
+    console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste error: ${e.message}`);
   }
   
-  // Strategy 3: Character-by-character typing
-  console.log(`JC: fillOracleCombobox [${fieldLabel}] → trying char-by-char typing`);
+  // Strategy 3: Char-by-char fallback
+  console.log(`JC: fillOracleCombobox [${fieldLabel}] → trying char-by-char fallback`);
   try {
     el.focus();
-    const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (ns) ns.call(el, '');
     el.value = '';
     el.dispatchEvent(new Event('input', { bubbles: true }));
-    
     for (let i = 0; i < valueStr.length; i++) {
-      const cur = valueStr.substring(0, i + 1);
-      if (ns) ns.call(el, cur);
-      el.value = cur;
+      el.value = valueStr.substring(0, i + 1);
       el.dispatchEvent(new Event('input', { bubbles: true }));
       await new Promise(r => setTimeout(r, 30));
     }
@@ -635,46 +639,11 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.blur();
     if (el.value === valueStr) {
-      console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char typing OK`);
+      console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char OK`);
       return true;
     }
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char: value didn't stick`);
   } catch(e) {
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char error: ${e.message}`);
-  }
-  
-  // Strategy 4: InputEvent per-character
-  console.log(`JC: fillOracleCombobox [${fieldLabel}] → trying InputEvent per-char`);
-  try {
-    el.focus();
-    const ns = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (ns) ns.call(el, '');
-    el.value = '';
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    
-    for (const char of valueStr) {
-      const cur = el.value + char;
-      if (ns) ns.call(el, cur);
-      el.value = cur;
-      el.dispatchEvent(new InputEvent('input', {
-        inputType: 'insertText',
-        data: char,
-        bubbles: true,
-        cancelable: true,
-      }));
-      await new Promise(r => setTimeout(r, 30));
-    }
-    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.blur();
-    if (el.value === valueStr) {
-      console.log(`JC: fillOracleCombobox [${fieldLabel}] → InputEvent per-char OK`);
-      return true;
-    }
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → InputEvent per-char: value didn't stick`);
-  } catch(e) {
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → InputEvent per-char error: ${e.message}`);
   }
   
   console.log(`JC: fillOracleCombobox [${fieldLabel}] → ALL strategies failed for "${valueStr}"`);
