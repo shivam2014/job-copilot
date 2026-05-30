@@ -27,7 +27,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   // Model loaded on focus from endpoint's /v1/models
 
-  renderSavedAnswers(result.saved_answers || []);
   updateConfigStatus();
   checkModelNeeded();
 
@@ -396,26 +395,126 @@ function showMsg(text, type) {
   setTimeout(() => { el.textContent = ''; el.className = 'save-msg'; }, 4000);
 }
 
-// --- Learned Corrections ---
+// --- Learned Corrections + Saved Answers ---
 function renderLearnedCorrections() {
   const container = document.getElementById('learned-corrections-list');
   if (!container) return;
-  chrome.storage.sync.get('learned_fields', (result) => {
+
+  chrome.storage.sync.get(['learned_fields', 'saved_answers'], (result) => {
     const corrections = result.learned_fields || {};
-    const entries = Object.entries(corrections);
-    if (entries.length === 0) {
-      container.innerHTML = '<p class="empty-state">No corrections learned yet. Fill a form and edit a field — JC will remember your preference.</p>';
+    const answers = result.saved_answers || [];
+    const correctionEntries = Object.entries(corrections);
+
+    if (correctionEntries.length === 0 && answers.length === 0) {
+      container.innerHTML = '<p class="empty-state">No learned data yet. Fill a form and edit a field — JC will remember your preference.</p>';
       return;
     }
-    container.innerHTML = entries.map(([key, val], i) => `
-      <div class="saved-qa">
-        <div class="qa-question"><strong>Field:</strong> ${escHtml(key)}</div>
-        <div class="qa-answer"><strong>Value:</strong> ${escHtml(val)}</div>
-        <button class="qa-delete correction-delete" data-key="${escHtml(key)}">✕</button>
-      </div>
-    `).join('');
+
+    let html = '';
+
+    // Field corrections
+    if (correctionEntries.length > 0) {
+      html += '<div style="font-size:11px;color:#6b7280;font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Field Values</div>';
+      html += correctionEntries.map(([key, val]) => `
+        <div class="saved-qa" data-key="${escHtml(key)}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div style="flex:1">
+              <div class="qa-question"><strong>Field:</strong> ${escHtml(key)}</div>
+              <div class="qa-answer">
+                <span class="correction-value"><strong>Value:</strong> ${escHtml(val)}</span>
+                <input type="text" class="correction-edit-input" value="${escHtml(val)}" style="display:none;width:100%;padding:4px 8px;font-size:12px;border:1px solid #d1d5db;border-radius:4px;box-sizing:border-box">
+              </div>
+              <div class="correction-edit-actions" style="display:none;gap:4px;margin-top:6px">
+                <button class="btn btn-sm correction-save" data-key="${escHtml(key)}" style="padding:2px 10px;font-size:11px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:4px;cursor:pointer">Save</button>
+                <button class="btn btn-sm correction-cancel" style="padding:2px 10px;font-size:11px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:4px;cursor:pointer">Cancel</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
+              <button class="rd-card-edit correction-edit" data-key="${escHtml(key)}" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;cursor:pointer;font-size:14px;padding:2px 6px">✏️</button>
+              <button class="rd-card-del correction-delete" data-key="${escHtml(key)}" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#9ca3af;cursor:pointer;font-size:14px;padding:2px 8px">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Saved AI answers
+    if (answers.length > 0) {
+      html += '<div style="font-size:11px;color:#6b7280;font-weight:600;margin:16px 0 8px;text-transform:uppercase;letter-spacing:0.5px">AI Answers</div>';
+      html += answers.map((qa, i) => `
+        <div class="saved-qa">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div style="flex:1">
+              <div class="qa-question"><strong>Q:</strong> ${escHtml(qa.question)}</div>
+              <div class="qa-answer"><strong>A:</strong> ${escHtml(qa.answer)}</div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
+              <button class="rd-card-del answer-delete" data-index="${i}" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#9ca3af;cursor:pointer;font-size:14px;padding:2px 8px">✕</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    container.innerHTML = html;
   });
 }
+
+// Edit a correction — show input field
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('correction-edit')) {
+    const card = e.target.closest('.saved-qa');
+    card.querySelector('.correction-value').style.display = 'none';
+    card.querySelector('.correction-edit-input').style.display = 'block';
+    card.querySelector('.correction-edit-actions').style.display = 'flex';
+    card.querySelector('.correction-edit').style.display = 'none';
+    card.querySelector('.correction-edit-input').focus();
+  }
+  if (e.target.classList.contains('correction-cancel')) {
+    const card = e.target.closest('.saved-qa');
+    const input = card.querySelector('.correction-edit-input');
+    input.value = card.querySelector('.correction-value').textContent.replace('Value: ', '');
+    card.querySelector('.correction-value').style.display = 'inline';
+    input.style.display = 'none';
+    card.querySelector('.correction-edit-actions').style.display = 'none';
+    card.querySelector('.correction-edit').style.display = 'inline-block';
+  }
+  if (e.target.classList.contains('correction-save')) {
+    const key = e.target.dataset.key;
+    const card = e.target.closest('.saved-qa');
+    const newVal = card.querySelector('.correction-edit-input').value.trim();
+    if (newVal) saveCorrectionEdit(key, newVal);
+  }
+});
+
+function saveCorrectionEdit(key, value) {
+  chrome.storage.sync.get('learned_fields', (result) => {
+    const corrections = result.learned_fields || {};
+    corrections[key] = value;
+    // Also update the generic category if this is a portal-specific key
+    const category = fieldCategoryMapGlobal[key];
+    if (category && category !== key) {
+      corrections[category] = value;
+    }
+    chrome.storage.sync.set({ learned_fields: corrections }, renderLearnedCorrections);
+  });
+}
+
+// Category map for the options page (mirrors the one in content.js)
+const fieldCategoryMapGlobal = {
+  'addressLine1': 'street_address', 'addressLine2': 'street_address_2',
+  'streetAddress': 'street_address', 'address1': 'street_address',
+  'address_line_1': 'street_address', 'street': 'street_address',
+  'city': 'city', 'locality': 'city',
+  'region2': 'state', 'state': 'state', 'province': 'state',
+  'postalCode': 'postal_code', 'zip': 'postal_code', 'zipCode': 'postal_code',
+  'country': 'country', 'countryCode': 'country',
+  'phone': 'phone', 'phoneNumber': 'phone',
+  'email': 'email', 'emailAddress': 'email',
+  'firstName': 'first_name', 'lastName': 'last_name',
+  'middleNames': 'middle_name', 'fullName': 'full_name',
+  'linkedin': 'linkedin', 'siteLink-1': 'linkedin',
+};
 
 // Delete a single correction
 function deleteCorrection(key) {
@@ -431,10 +530,22 @@ document.addEventListener('click', (e) => {
   if (e.target.classList.contains('correction-delete')) {
     deleteCorrection(e.target.dataset.key);
   }
+  if (e.target.classList.contains('answer-delete')) {
+    deleteSavedAnswer(parseInt(e.target.dataset.index));
+  }
 });
+
+function deleteSavedAnswer(index) {
+  chrome.storage.sync.get('saved_answers', (result) => {
+    const answers = result.saved_answers || [];
+    answers.splice(index, 1);
+    chrome.storage.sync.set({ saved_answers: answers }, renderLearnedCorrections);
+  });
+}
+
 document.getElementById('clear-corrections-btn')?.addEventListener('click', () => {
-  if (confirm('Clear all learned corrections?')) {
-    chrome.storage.sync.set({ learned_fields: {} }, renderLearnedCorrections);
+  if (confirm('Clear all learned data (field values + AI answers)?')) {
+    chrome.storage.sync.set({ learned_fields: {}, saved_answers: [] }, renderLearnedCorrections);
   }
 });
 // Call renderLearnedCorrections on page load
@@ -927,8 +1038,8 @@ function renderEditableLists(data) {
       if (item.name) html += '<div class="rd-card-title">' + escHtml(item.name) + '</div>';
       if (item.description) html += '<div class="rd-card-desc">' + escHtml(item.description) + '</div>';
       html += '</div><div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';
-      html += '<button class="rd-card-edit" data-list="projects" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;cursor:pointer;font-size:12px;padding:3px 6px">Edit</button>';
-      html += '<button class="rd-card-del" data-list="projects" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#9ca3af;cursor:pointer;font-size:13px;padding:3px 8px">X</button>';
+      html += '<button class="rd-card-edit" data-list="projects" data-index="' + i + '">✏️</button>';
+      html += '<button class="rd-card-del" data-list="projects" data-index="' + i + '">✕</button>';
       html += '</div></div></div>';
       return html;
     }).join('');
@@ -944,8 +1055,8 @@ function renderEditableLists(data) {
       if (title) html += '<div class="rd-card-title">' + escHtml(title) + '</div>';
       if (url) html += '<div class="rd-card-sub">' + escHtml(url) + '</div>';
       html += '</div><div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">';
-      html += '<button class="rd-card-edit" data-list="publications" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#6b7280;cursor:pointer;font-size:12px;padding:3px 6px">Edit</button>';
-      html += '<button class="rd-card-del" data-list="publications" data-index="' + i + '" style="background:none;border:1px solid #e5e7eb;border-radius:6px;color:#9ca3af;cursor:pointer;font-size:13px;padding:3px 8px">X</button>';
+      html += '<button class="rd-card-edit" data-list="publications" data-index="' + i + '">✏️</button>';
+      html += '<button class="rd-card-del" data-list="publications" data-index="' + i + '">✕</button>';
       html += '</div></div></div>';
       return html;
     }).join('');
@@ -1162,18 +1273,6 @@ document.getElementById('reset-tokens-btn').onclick = async () => {
     renderTokenUsage();
   }
 };
-
-// Delete saved answers
-document.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('qa-delete')) {
-    const index = parseInt(e.target.dataset.index);
-    const result = await chrome.storage.sync.get('saved_answers');
-    const answers = result.saved_answers || [];
-    answers.splice(index, 1);
-    await chrome.storage.sync.set({ saved_answers: answers });
-    renderSavedAnswers(answers);
-  }
-});
 
 // --- Fetch models on focus ---
 // Ensure URL has protocol

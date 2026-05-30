@@ -104,6 +104,93 @@ let detectedFields = null;
 let jcPanel = null;
 let panelWasOpen = false;
 
+// Sync fill state to DOM so external scripts (fill.mjs, fill_section.mjs)
+// can poll via document.documentElement.dataset.jcFilling
+function setFilling(val) {
+  window.__jcFilling = val;
+  document.documentElement.dataset.jcFilling = val ? 'true' : 'false';
+}
+
+// ── Field Category Map ──────────────────────────────────────────────
+// Maps portal-specific field names to generic categories.
+// When saving a learned correction, we save under BOTH the portal-specific
+// key and the generic category. When building the fill map, we check for
+// the generic category if the portal-specific key has no value.
+// This ensures learnings from Oracle CX work on Workday, Greenhouse, etc.
+const fieldCategoryMap = {
+  // Address
+  'addressLine1': 'street_address', 'addressLine2': 'street_address_2',
+  'addressLine3': 'street_address_3', 'streetAddress': 'street_address',
+  'address1': 'street_address', 'address_1': 'street_address',
+  'address_line_1': 'street_address', 'street': 'street_address',
+  'address2': 'street_address_2', 'address_2': 'street_address_2',
+  'address_line_2': 'street_address_2',
+  // City
+  'city': 'city', 'locality': 'city', 'municipality': 'city',
+  // State
+  'region2': 'state', 'state': 'state', 'province': 'state',
+  'stateProvince': 'state', 'region': 'state',
+  // Postal code
+  'postalCode': 'postal_code', 'postal_code': 'postal_code',
+  'zip': 'postal_code', 'zipCode': 'postal_code', 'postcode': 'postal_code',
+  // Country
+  'country': 'country', 'countryCode': 'country',
+  'country_code': 'country', 'countryCode-2': 'country',
+  // Phone
+  'phone': 'phone', 'phoneNumber': 'phone', 'phone_number': 'phone',
+  'telephone': 'phone', 'mobile': 'phone',
+  'phone_country_code': 'phone_country_code',
+  // Email
+  'email': 'email', 'emailAddress': 'email', 'email_address': 'email',
+  'confirmEmail': 'email', 'confirm_email': 'email',
+  // Name
+  'firstName': 'first_name', 'first_name': 'first_name', 'givenName': 'first_name',
+  'lastName': 'last_name', 'last_name': 'last_name', 'familyName': 'last_name',
+  'middleNames': 'middle_name', 'middle_name': 'middle_name',
+  'fullName': 'full_name', 'full_name': 'full_name',
+  // Links
+  'linkedin': 'linkedin', 'siteLink-1': 'linkedin',
+  'github': 'github', 'website': 'website',
+};
+
+// Get the generic category for a field name
+function getFieldCategory(fieldName) {
+  return fieldCategoryMap[fieldName] || fieldName;
+}
+
+// Get all portal-specific keys that map to the same category
+function getKeysForCategory(category) {
+  return Object.entries(fieldCategoryMap)
+    .filter(([_, cat]) => cat === category)
+    .map(([key]) => key);
+}
+
+// ── Global Learning ──────────────────────────────────────────────────
+// Attaches blur listeners to ALL detected text inputs/textareas.
+// When you manually fill a field JC didn't touch (address, street, etc.),
+// the value is saved to learned_fields. Next Fill All will use it.
+const _learnedEls = new WeakSet();
+function attachGlobalLearning() {
+  const fields = FormDetector.detect();
+  const allFields = [...fields.personal, ...fields.questions, ...fields.selects];
+  for (const field of allFields) {
+    const el = field.el;
+    if (!el || _learnedEls.has(el)) continue;
+    if (el.dataset.jcFilled) continue; // already handled by listenForCorrections
+    _learnedEls.add(el);
+
+    const fieldName = field.name || el.name || el.id;
+    el.addEventListener('blur', function onUserEdit() {
+      const val = el.value?.trim();
+      if (val && fieldName) {
+        saveLearnedCorrection(fieldName, val);
+        console.log('JC: Learned from user: "' + fieldName + '" = "' + val + '"');
+      }
+      // Don't remove listener — keep saving on every blur so corrections work
+    });
+  }
+}
+
 // ── SPA Navigation Handler ─────────────────────────────────────────
 // Oracle CX is a single-page app. When you click "Apply", "Next", or
 // "Continue", Oracle destroys the current form and renders a new one.
@@ -123,6 +210,7 @@ document.addEventListener('click', function(e) {
             injectFloatingButton();
           }
           injectPerFieldButtons();
+          attachGlobalLearning();
           const p = document.getElementById('jc-panel');
           if (p && panelWasOpen && !p.classList.contains('open')) {
             p.classList.add('open');
@@ -153,6 +241,7 @@ async function init() {
 
     injectFloatingButton();
     injectPerFieldButtons();
+    attachGlobalLearning();
 
     console.log("%c🔍 Job Copilot loaded", "font-weight:bold;color:#3b82f6");
     setTimeout(() => FormDetector.debugLog(), 2000);
@@ -223,7 +312,7 @@ function createPanel() {
   };
 
   jcPanel.querySelector('#jc-fill-all').onclick = async () => {
-    window.__jcFilling = true;
+    setFilling(true);
     await fillPersonal();
     await fillExperience();
     await fillEducation();
@@ -232,16 +321,16 @@ function createPanel() {
     await fillAIQuestions();
     await fillApplicationQuestions();
     await fillLearnedRadios();
-    window.__jcFilling = false;
+    setFilling(false);
   };
 
   // TRIGGER: user clicks "Clear All" in the panel.
   // Sets the same guard as Fill All (the clear operation modifies the DOM),
   // runs clearForm() which removes all values from the form, then releases the guard.
   jcPanel.querySelector('#jc-clear-form').onclick = () => {
-    window.__jcFilling = true;
+    setFilling(true);
     clearForm();
-    window.__jcFilling = false;
+    setFilling(false);
   };
 
   document.body.appendChild(jcPanel);
@@ -403,7 +492,9 @@ async function fillSingleField(field) {
     if (val) fillMap[key] = val;
   }
 
-  const value = fillMap[field.name];
+  // Also check generic category for the field name
+  const category = getFieldCategory(field.name);
+  const value = fillMap[field.name] || fillMap[category];
   if (!value) {
     showStatus('No data for "' + fieldLabel + '"', 'info');
     return;
@@ -461,9 +552,10 @@ async function fillPersonal() {
   let filled = 0;
   const filledEls = [];
   for (const field of [...fields.personal, ...fields.selects]) {
-  const value = fillMap[field.name];  // Step 5: lookup by field identity
+    const category = getFieldCategory(field.name);
+    const value = fillMap[field.name] || fillMap[category]; // Step 5: lookup by field identity + category
     if (value && !skipFieldForType(field, value)) {
-  const ok = await FormDetector.fillField(field, value);
+      const ok = await FormDetector.fillField(field, value);
       if (ok) { filled++; filledEls.push(field.el); }
     }
   }
@@ -483,6 +575,13 @@ async function fillAIQuestions() {
   const profile = await chrome.storage.sync.get([
     'llm_base_url', 'llm_api_key', 'llm_model', 'profile_name',
   ]);
+
+  // Skip silently if LLM not configured
+  if (!profile.llm_base_url && !profile.llm_api_key) {
+    console.log('JC: fillAIQuestions — no LLM configured, skipping');
+    return;
+  }
+
   const resumeText = await getResumeText();
 
   if (!resumeText) {
@@ -525,7 +624,7 @@ async function fillAIQuestions() {
       await saveAnswer(field.label || field.identifiers, answer);
       filled++;
     } catch (err) {
-      console.error('JC: LLM error for field:', field.label, err);
+      console.log('JC: LLM error for field:', field.label, err.message);
     }
   }
 
@@ -591,6 +690,7 @@ async function fillLearnedRadios() {
 // etc.) uses the same identify() scoring, and the combobox strategies
 // handle Oracle CX, Workday, and generic dropdowns.
 async function fillExperience() {
+  const _t0 = Date.now();
   const data = await chrome.storage.sync.get('resume_full_data');
   if (!data.resume_full_data) {
     console.log('JC: No resume_full_data — skipping experience');
@@ -618,6 +718,7 @@ async function fillExperience() {
   // Strategy 1: Paste (InputEvent insertFromPaste) — fast, works for most fields.
   // Strategy 2: Char-by-char fallback — slow but reliable for stubborn fields.
   async function fillExpField(el, value, fieldName) {
+    const _t = Date.now();
     if (!el) { console.log('JC: fillExpField — element not found for ' + (fieldName || 'unknown')); return false; }
     if (!value) { console.log('JC: fillExpField — empty value for ' + (fieldName || 'unknown')); return false; }
     try {
@@ -637,7 +738,7 @@ async function fillExperience() {
       el.blur();
       await new Promise(r => setTimeout(r, 200));
       if (el.value === value) {
-        console.log('JC: fillExpField [' + fieldName + '] → paste OK');
+        console.log('JC: fillExpField [' + fieldName + '] → paste OK +' + (Date.now()-_t) + 'ms');
         return true;
       }
 
@@ -698,9 +799,8 @@ async function fillExperience() {
       break;
     }
     trigger.click();
-    // [FIX] Wait longer for Oracle to render the form fields.
-    // employerName inputs weren't ready at 2000ms.
-    await new Promise(r => setTimeout(r, 3000));
+    // Brief wait for Oracle to start rendering, then poll via employerName retry loop
+    await new Promise(r => setTimeout(r, 300));
 
     // Step 2: Fill ALL fields using char-by-char (fillExpField).
     // Wait for the form fields to render (Oracle renders async after Add click).
@@ -708,10 +808,10 @@ async function fillExperience() {
 
     // Employer Name (required)
     let empName = null;
-    for (let retry = 0; retry < 6; retry++) {
+    for (let retry = 0; retry < 8; retry++) {
       const all = document.querySelectorAll('input[name="employerName"]');
       if (all.length > 0) { empName = all[all.length - 1]; break; }
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 250));
     }
     if (empName && exp.company) await fillExpField(empName, exp.company, "employerName");
 
@@ -814,22 +914,23 @@ async function fillExperience() {
     // Step 3: Click the SUBMIT button to save this entry.
     // The "Add Experience" button at the bottom of the open form is the submit.
     // After clicking, the form closes and the entry is saved as a tile.
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 300));
     const submitBtn = findSubmitBtn();
     if (submitBtn) {
       submitBtn.click();
       console.log('JC: Submitted experience entry ' + (filled + 1) + ': ' + (exp.company || 'unknown'));
-      await new Promise(r => setTimeout(r, 2000)); // Wait for form to close and tile to appear
+      await new Promise(r => setTimeout(r, 500)); // Wait for form to close and tile to appear
     } else {
       console.log('JC: No submit button found for experience entry ' + (filled + 1));
     }
 
     filled++;
+    console.log('JC: exp entry ' + filled + ' done in ' + (Date.now()-_t0) + 'ms');
   }
 
   if (filled > 0) {
     showStatus('Added ' + filled + ' experience(s)', 'success');
-    console.log('JC: Filled ' + filled + ' experience entries');
+    console.log('JC: Filled ' + filled + ' experience entries in ' + (Date.now()-_t0) + 'ms');
   }
 }
 
@@ -851,9 +952,10 @@ async function fillEducation() {
 
   const degreeMap = {
     'masters of science': 'Master of Science', 'master of science': 'Master of Science',
-    'msc': 'Master of Science', 'bachelors of technology': 'Bachelor of Technology',
-    'bachelor of technology': 'Bachelor of Technology', 'btech': 'Bachelor of Technology',
+    'msc': 'Master of Science', 'bachelors of technology': 'Bachelor of Engineering',
+    'bachelor of technology': 'Bachelor of Engineering', 'btech': 'Bachelor of Engineering',
     'bachelor of science': 'Bachelor of Science', 'phd': 'Doctorate', 'doctorate': 'Doctorate',
+    'bachelors': 'Bachelors', 'masters': 'Masters',
   };
 
   let filled = 0;
@@ -995,12 +1097,22 @@ async function fillSkills() {
     });
 
     if (match) {
-      match.click();
+      // [FIX] Use real mouse events — Oracle's React ignores synthetic click()
+      const rect = match.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window, button: 0 };
+      match.dispatchEvent(new PointerEvent('pointerdown', opts));
+      match.dispatchEvent(new MouseEvent('mousedown', opts));
+      await new Promise(r => setTimeout(r, 50));
+      match.dispatchEvent(new PointerEvent('pointerup', opts));
+      match.dispatchEvent(new MouseEvent('mouseup', opts));
+      match.dispatchEvent(new MouseEvent('click', opts));
       addedFromSuggestions++;
       // Remove from available buttons so we don't click it again
       const idx = skillBtns.indexOf(match);
       if (idx >= 0) skillBtns.splice(idx, 1);
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 500));
     } else {
       unmatchedSkills.push(skill);
     }
@@ -1013,18 +1125,37 @@ async function fillSkills() {
       (b.textContent || '').trim() === 'Add More Skills' && (b.id || '').includes('profileItemsAddButton')
     );
     if (!addMoreBtn) { console.log('JC: No "Add More Skills" button'); break; }
-    addMoreBtn.click();
-    await new Promise(r => setTimeout(r, 3000));
-    const skillCombos = document.querySelectorAll('[name="contentItemId"][role="combobox"]');
-    const skillCombo = skillCombos.length > 0 ? skillCombos[skillCombos.length - 1] : null;
+    // [FIX] Real mouse events for Oracle React buttons
+    const r1 = addMoreBtn.getBoundingClientRect();
+    const o1 = { bubbles: true, cancelable: true, clientX: r1.left + r1.width/2, clientY: r1.top + r1.height/2, view: window, button: 0 };
+    addMoreBtn.dispatchEvent(new PointerEvent('pointerdown', o1));
+    addMoreBtn.dispatchEvent(new MouseEvent('mousedown', o1));
+    await new Promise(r => setTimeout(r, 50));
+    addMoreBtn.dispatchEvent(new PointerEvent('pointerup', o1));
+    addMoreBtn.dispatchEvent(new MouseEvent('mouseup', o1));
+    addMoreBtn.dispatchEvent(new MouseEvent('click', o1));
+    await new Promise(r => setTimeout(r, 1500));
+    const allSkillCombos = document.querySelectorAll('[name="skills"][role="combobox"]');
+    const skillCombo = allSkillCombos.length > 0 ? allSkillCombos[allSkillCombos.length - 1] : null;
     if (!skillCombo) { console.log('JC: No skill combobox found'); break; }
     const field = { el: skillCombo, name: 'skill', label: 'Skill' };
     await FormDetector.fillField(field, skill);
     await new Promise(r => setTimeout(r, 500));
     const submitBtn = Array.from(document.querySelectorAll('button')).find(b =>
-      (b.textContent || '').trim() === 'Add More Skills' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
+      (b.textContent || '').trim() === 'Add Skill' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
     );
-    if (submitBtn) { submitBtn.click(); await new Promise(r => setTimeout(r, 1500)); addedCustom++; }
+    if (submitBtn) {
+      // [FIX] Real mouse events for Oracle React buttons
+      const r2 = submitBtn.getBoundingClientRect();
+      const o2 = { bubbles: true, cancelable: true, clientX: r2.left + r2.width/2, clientY: r2.top + r2.height/2, view: window, button: 0 };
+      submitBtn.dispatchEvent(new PointerEvent('pointerdown', o2));
+      submitBtn.dispatchEvent(new MouseEvent('mousedown', o2));
+      await new Promise(r => setTimeout(r, 50));
+      submitBtn.dispatchEvent(new PointerEvent('pointerup', o2));
+      submitBtn.dispatchEvent(new MouseEvent('mouseup', o2));
+      submitBtn.dispatchEvent(new MouseEvent('click', o2));
+      await new Promise(r => setTimeout(r, 800)); addedCustom++;
+    }
     else {
       const cancel = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim() === 'Cancel');
       if (cancel) cancel.click();
@@ -1163,7 +1294,7 @@ async function fillLanguages() {
     addBtn.dispatchEvent(new PointerEvent('pointerup', opts));
     addBtn.dispatchEvent(new MouseEvent('mouseup', opts));
     addBtn.dispatchEvent(new MouseEvent('click', opts));
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 1500));
 
     const allLangCombos = document.querySelectorAll('[name="contentItemId"][role="combobox"]');
     const langCombo = allLangCombos.length > 0 ? allLangCombos[allLangCombos.length - 1] : null;
@@ -1176,14 +1307,36 @@ async function fillLanguages() {
     const pills = document.querySelectorAll('.cx-select-pill-section button, button.cx-select-pill');
     for (const pill of pills) {
       if (pill.offsetHeight === 0) continue;
-      if ((pill.textContent || '').trim() === pillText) { pill.click(); break; }
+      if ((pill.textContent || '').trim() === pillText) {
+        // [FIX] Real mouse events for Oracle React pill buttons
+        const rp = pill.getBoundingClientRect();
+        const op = { bubbles: true, cancelable: true, clientX: rp.left + rp.width/2, clientY: rp.top + rp.height/2, view: window, button: 0 };
+        pill.dispatchEvent(new PointerEvent('pointerdown', op));
+        pill.dispatchEvent(new MouseEvent('mousedown', op));
+        await new Promise(r => setTimeout(r, 50));
+        pill.dispatchEvent(new PointerEvent('pointerup', op));
+        pill.dispatchEvent(new MouseEvent('mouseup', op));
+        pill.dispatchEvent(new MouseEvent('click', op));
+        break;
+      }
     }
 
     await new Promise(r => setTimeout(r, 500));
     const submitBtn = Array.from(document.querySelectorAll('button')).find(b =>
       (b.textContent || '').trim() === 'Add Language' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
     );
-    if (submitBtn) { submitBtn.click(); await new Promise(r => setTimeout(r, 2000)); }
+    if (submitBtn) {
+      // [FIX] Real mouse events for Oracle React submit button
+      const rs = submitBtn.getBoundingClientRect();
+      const os = { bubbles: true, cancelable: true, clientX: rs.left + rs.width/2, clientY: rs.top + rs.height/2, view: window, button: 0 };
+      submitBtn.dispatchEvent(new PointerEvent('pointerdown', os));
+      submitBtn.dispatchEvent(new MouseEvent('mousedown', os));
+      await new Promise(r => setTimeout(r, 50));
+      submitBtn.dispatchEvent(new PointerEvent('pointerup', os));
+      submitBtn.dispatchEvent(new MouseEvent('mouseup', os));
+      submitBtn.dispatchEvent(new MouseEvent('click', os));
+      await new Promise(r => setTimeout(r, 1000));
+    }
     filled++;
   }
   if (filled > 0) { showStatus('Added ' + filled + ' language(s)', 'success'); }
@@ -1306,7 +1459,7 @@ function listenForCorrections(filledEls) {
     seen.add(el);
     if (!el || !el.dataset) continue;
 
-    const fieldName = el.dataset.jcField || el.id || el.name;
+    const fieldName = field.name || el.name || el.id;
     const filledValue = el.value;
     el.dataset.jcFilled = 'true';
     el.dataset.jcValue = filledValue;
@@ -1317,23 +1470,29 @@ function listenForCorrections(filledEls) {
       if (newValue && oldValue && newValue !== oldValue) {
         saveLearnedCorrection(fieldName || 'custom', newValue);
         console.log('JC: Learned correction for "' + fieldName + '": "' + newValue + '"');
+        el.dataset.jcValue = newValue; // update so next blur compares against new value
       }
-      el.removeEventListener('blur', onBlur);
+      // Don't remove listener — keep saving on every blur so corrections work
     });
   }
 }
 
 // Writes one correction to learned_fields in Chrome storage.
-// learned_fields is a flat key-value object: {"email": "new@example.com", ...}
-// The key is the field name (or id), the value is what you corrected it to.
+// Saves under both the portal-specific key AND the generic category,
+// so the same learning works across Oracle CX, Workday, Greenhouse, etc.
 async function saveLearnedCorrection(fieldName, value) {
   try {
     const result = await chrome.storage.sync.get('learned_fields');
     const fields = result.learned_fields || {};
     fields[fieldName] = value;
+    // Also save under the generic category (e.g., "addressLine1" → "street_address")
+    const category = getFieldCategory(fieldName);
+    if (category !== fieldName) {
+      fields[category] = value;
+    }
     await chrome.storage.sync.set({ learned_fields: fields });
   } catch(e) {
-    console.error('JC: Failed to save learned correction:', e);
+    console.log('JC: Failed to save learned correction:', e.message);
   }
 }
 
@@ -1548,7 +1707,7 @@ async function saveAnswer(question, answer) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'jc_fill_all') {
-    window.__jcFilling = true;
+    setFilling(true);
     (async () => {
       await fillPersonal();
       await fillExperience();
@@ -1557,15 +1716,47 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await fillAIQuestions();
       await fillApplicationQuestions();
       await fillLearnedRadios();
-      window.__jcFilling = false;
+      setFilling(false);
     })();
     sendResponse({ ok: true });
     return true;
   }
+  // Per-section fills for debugging — call via chrome.tabs.sendMessage
+  // e.g. { type: 'jc_fill_section', section: 'experience' }
+  if (msg.type === 'jc_fill_section') {
+    const section = msg.section;
+    const fns = {
+      personal: fillPersonal,
+      experience: fillExperience,
+      education: fillEducation,
+      skills: fillSkills,
+      languages: fillLanguages,
+      aiQuestions: fillAIQuestions,
+      appQuestions: fillApplicationQuestions,
+      radios: fillLearnedRadios,
+    };
+    const fn = fns[section];
+    if (!fn) {
+      sendResponse({ ok: false, error: `Unknown section: ${section}. Valid: ${Object.keys(fns).join(', ')}` });
+      return true;
+    }
+    setFilling(true);
+    (async () => {
+      try {
+        await fn();
+        sendResponse({ ok: true, section });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message, section });
+      } finally {
+        setFilling(false);
+      }
+    })();
+    return true;
+  }
   if (msg.type === 'jc_clear_form') {
-    window.__jcFilling = true;
+    setFilling(true);
     clearForm();
-    window.__jcFilling = false;
+    setFilling(false);
     sendResponse({ ok: true });
     return true;
   }
@@ -1616,6 +1807,7 @@ const observer = new MutationObserver(function() {
         injectFloatingButton();
       }
       injectPerFieldButtons();
+      attachGlobalLearning();
     }
 
     if (panel && panel.classList.contains('open')) {

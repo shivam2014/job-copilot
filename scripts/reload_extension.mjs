@@ -1,127 +1,84 @@
-import { createConnection } from 'net';
-import { randomUUID } from 'crypto';
+#!/usr/bin/env node
+/**
+ * reload_extension.mjs — Reload the JC extension and optionally refresh the Oracle page.
+ *
+ * Usage:
+ *   node scripts/reload_extension.mjs              # reload ext + refresh Oracle page
+ *   node scripts/reload_extension.mjs --ext-only    # reload ext only, skip page refresh
+ *
+ * How it works:
+ *   1. Connects to Chrome via Playwright CDP
+ *   2. Opens chrome://extensions, finds the JC extension card via shadow DOM
+ *   3. Clicks the dev-reload-button
+ *   4. (default) Reloads the Oracle CX page so the new content script injects
+ *
+ * Key learning: After reloading the extension, you MUST reload the target
+ * page — otherwise the old content script keeps running from the previous load.
+ */
 
-const EXT_PATH = '/Users/shivam94/job-copilot/extension';
+import { chromium } from 'playwright';
 
-// Connect to CDP and send commands
-function cdpSend(wsUrl, msg) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(wsUrl);
-    const client = createConnection(url.port || 9222, url.hostname, () => {
-      const id = randomUUID().slice(0, 8);
-      const payload = JSON.stringify({ ...msg, id });
-      client.write(payload + '\n');
-    });
-    let buf = '';
-    client.on('data', (chunk) => {
-      buf += chunk.toString();
-      try {
-        const resp = JSON.parse(buf);
-        if (resp.id === msg.id) {
-          client.end();
-          resolve(resp);
-        }
-      } catch(e) {}
-    });
-    client.on('error', reject);
-    setTimeout(() => { client.end(); reject(new Error('CDP timeout')); }, 10000);
-  });
-}
+const extOnly = process.argv.includes('--ext-only');
 
-async function main() {
-  // Get browser WS URL
-  const resp = await fetch('http://localhost:9222/json/version');
-  const info = await resp.json();
-  const browserWs = info.webSocketDebuggerUrl;
-  
-  // Get all targets
-  const targets = await fetch('http://localhost:9222/json').then(r => r.json());
-  
-  // Find the about:blank tab to use for extensions page
-  let extTab = targets.find(t => t.url === 'about:blank' || t.url === 'chrome://tab-search.top-chrome/');
-  if (!extTab) {
-    // Create a new tab
-    const newTab = await fetch('http://localhost:9222/json/new').then(r => r.json());
-    extTab = newTab;
-  }
-  
-  const tabWs = extTab.webSocketDebuggerUrl;
-  console.log(`Using tab: ${extTab.id} ${extTab.url}`);
-  
-  // Navigate to chrome://extensions
-  const navResult = await cdpSend(tabWs, {
-    method: 'Page.enable'
-  });
-  console.log('Page.enable:', JSON.stringify(navResult));
-  
-  const nav = await cdpSend(tabWs, {
-    method: 'Page.navigate',
-    params: { url: 'chrome://extensions' }
-  });
-  console.log('Navigate:', JSON.stringify(nav));
-  
-  // Wait for page to load
-  await new Promise(r => setTimeout(r, 2000));
-  
-  // Inject script to click developer mode toggle and load unpacked
-  // First check if developer mode is on, turn it on if not
-  const evalResult = await cdpSend(tabWs, {
-    method: 'Runtime.evaluate',
-    params: {
-      expression: `
-        (async () => {
-          // Wait for extensions manager to load
-          await new Promise(r => setTimeout(r, 1000));
-          
-          // Try to use chrome.developerPrivate API
-          if (chrome && chrome.developerPrivate) {
-            // Check if dev mode is on
-            const profileInfo = await chrome.developerPrivate.getProfileConfiguration();
-            if (!profileInfo.isDeveloperModeEnabled) {
-              await chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true });
-              console.log('Enabled developer mode');
-            }
-            
-            // Load the unpacked extension
-            const extId = await chrome.developerPrivate.loadUnpacked({
-              path: '${EXT_PATH}',
-              failOnLoadError: false
-            });
-            console.log('Loaded extension with ID:', extId);
-            return { ok: true, extId };
-          } else {
-            // Fallback: click the UI elements
-            const devToggle = document.querySelector('#devMode');
-            if (devToggle && !devToggle.checked) {
-              devToggle.click();
-              await new Promise(r => setTimeout(r, 500));
-            }
-            
-            // Click "Load unpacked" button
-            const loadBtn = document.querySelector('.extensions-manager .page-container .page-footer button');
-            if (loadBtn) {
-              loadBtn.click();
-              await new Promise(r => setTimeout(r, 500));
-              
-              // The file dialog is OS-native, so we can't automate this via CDP
-              // Return the info so we can use another approach
-              return { ok: false, reason: 'File dialog is OS-native' };
-            }
-            return { ok: false, reason: 'Could not find controls' };
-          }
-        })()
-      `,
-      awaitPromise: true,
+const browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
+const ctx = browser.contexts()[0];
+
+// 1. Open chrome://extensions in a temp tab
+console.log('Opening chrome://extensions...');
+const extPage = await ctx.newPage();
+await extPage.goto('chrome://extensions', { waitUntil: 'domcontentloaded' });
+await extPage.waitForTimeout(2000);
+
+// 2. Find the JC extension and click reload via shadow DOM
+const result = await extPage.evaluate(() => {
+  const manager = document.querySelector('extensions-manager');
+  if (!manager) return { error: 'extensions-manager not found' };
+
+  const itemList = manager.shadowRoot?.querySelector('extensions-item-list');
+  if (!itemList) return { error: 'extensions-item-list not found' };
+
+  const cards = itemList.shadowRoot?.querySelectorAll('extensions-item');
+  if (!cards || cards.length === 0) return { error: 'no extension cards' };
+
+  for (const card of cards) {
+    const name = card.shadowRoot?.querySelector('#name')?.textContent?.trim() || '';
+    // Match "Job Copilot" or anything with "jc" / "copilot"
+    if (/job.?copilot|jc\b/i.test(name)) {
+      const reloadBtn = card.shadowRoot?.querySelector('#dev-reload-button');
+      if (!reloadBtn) return { error: 'reload button not found', name };
+      reloadBtn.click();
+      return { ok: true, name };
     }
-  });
-  console.log('Eval result:', JSON.stringify(evalResult, null, 2));
-  
-  // Alternative approach: try using Extensions CDP domain
-  const extResult = await cdpSend(browserWs, {
-    method: 'Extensions.loadUnpacked',
-    params: { path: EXT_PATH }
-  }).catch(e => ({ error: e.message }));
-  console.log('Extensions.loadUnpacked result:', JSON.stringify(extResult));
+  }
+  return { error: 'JC extension not found', names: Array.from(cards).map(c => c.shadowRoot?.querySelector('#name')?.textContent?.trim()) };
+});
+
+await extPage.waitForTimeout(1500);
+await extPage.close();
+
+if (result.error) {
+  console.error('Extension reload FAILED:', result.error);
+  if (result.names) console.error('  Available extensions:', result.names.join(', '));
+  process.exit(1);
 }
 
-main().catch(console.error);
+console.log(`Extension reloaded: "${result.name}"`);
+
+// 3. Reload the Oracle page (unless --ext-only)
+if (extOnly) {
+  console.log('--ext-only: skipping page refresh');
+} else {
+  const oraclePage = ctx.pages().find(p => p.url().includes('oraclecloud'));
+  if (oraclePage) {
+    console.log('Refreshing Oracle page...');
+    await oraclePage.reload({ waitUntil: 'domcontentloaded' });
+    // Wait for content script to inject (Oracle renders async)
+    await oraclePage.waitForTimeout(6000);
+    console.log('Oracle page refreshed:', oraclePage.url());
+  } else {
+    console.log('No Oracle page open — skipping page refresh');
+  }
+}
+
+console.log('Done.');
+process.exit(0);

@@ -174,12 +174,13 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
 #saved-answers-list { display: flex; flex-direction: column; gap: 8px; }
 .saved-qa {
   position: relative;
-  padding: 10px 36px 10px 12px;
+  padding: 10px 12px;
   background: #f9fafb;
   border-radius: 8px;
   border-left: 3px solid #8b5cf6;
   font-size: 12px;
   line-height: 1.5;
+  margin-bottom: 8px;
 }
 .qa-question { color: #374151; margin-bottom: 4px; }
 .qa-answer { color: #6b7280; }
@@ -575,6 +576,21 @@ textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
   display: flex;
   gap: 8px;
   margin-top: 4px;
+}
+.rd-card .rd-card-edit {
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  transition: all 0.15s;
+}
+.rd-card .rd-card-edit:hover {
+  background: #eff6ff;
+  color: #1e40af;
+  border-color: #bfdbfe;
 }
 .rd-card .rd-card-del {
   float: right;

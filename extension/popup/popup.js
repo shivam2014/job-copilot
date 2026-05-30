@@ -2,6 +2,19 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
+
+  // Attach button handlers FIRST (before any early returns)
+  document.getElementById('open-settings')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
+  });
+  document.getElementById('reload-page')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab) chrome.tabs.reload(tab.id);
+    window.close();
+  });
+
   const statusText = document.getElementById('status-text');
   const statusCard = document.getElementById('status-card');
   const fieldsSection = document.getElementById('fields-section');
@@ -100,14 +113,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setStatus(`Error: ${err.message}`, 'error');
   }
 
-  document.getElementById('open-settings').onclick = (e) => {
-    e.preventDefault();
-    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
-  };
-  document.getElementById('reload-page').onclick = (e) => {
-    e.preventDefault();
-    chrome.tabs.reload(tab.id);
-  };
   } catch (e) {
     console.error('JC Popup error:', e.message, e.stack);
     document.getElementById('status-text').textContent = 'Error: ' + e.message;

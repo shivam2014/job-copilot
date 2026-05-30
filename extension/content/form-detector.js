@@ -542,6 +542,7 @@ const FormDetector = {
 //   3. Char-by-char typing (progressive value + input events, 30ms/char)
 //   4. InputEvent per-character (insertText for each char)
 FormDetector.fillOracleCombobox = async function(el, value) {
+  const _t = Date.now();
   const valueStr = (value || '').trim();
   if (!valueStr) {
     console.log('JC: fillOracleCombobox → empty value, skipping');
@@ -550,33 +551,74 @@ FormDetector.fillOracleCombobox = async function(el, value) {
   
   const fieldLabel = el.name || el.id || 'Oracle combobox';
   
-  // Strategy 1: DOM approach — click to open dropdown, find option, select it
+  // Strategy 1: DOM approach — click toggle button to open dropdown, find option, select it
+  // Oracle CX React comboboxes open via the toggle button (#{id}-toggle-button),
+  // NOT by clicking the input element. The dropdown renders as #{id}-listbox with
+  // role="grid" containing role="gridcell" items with class cx-select__list-item.
   try {
-    el.focus();
-    el.click();
-    await new Promise(r => setTimeout(r, 800));
-    
-    const valueLower = valueStr.toLowerCase().trim();
-    const selectors = ['.cx-select-option', '[role="option"]', '.oj-select-choice', '.cx-select__list-item', '[role="gridcell"]'];
-    let match = null;
-    for (const sel of selectors) {
-      const options = document.querySelectorAll(sel);
-      if (options.length === 0) continue;
-      match = Array.from(options).find(o =>
-        o.textContent.trim().toLowerCase() === valueLower ||
-        o.getAttribute('data-value')?.toLowerCase() === valueLower
-      );
-      if (match) break;
-      match = Array.from(options).find(o =>
-        o.textContent.trim().toLowerCase().startsWith(valueLower) ||
-        valueLower.startsWith(o.textContent.trim().toLowerCase())
-      );
-      if (match) break;
+    const toggleBtn = document.getElementById(el.id + '-toggle-button');
+    if (toggleBtn) {
+      toggleBtn.click();
+    } else {
+      el.focus();
+      el.click();
     }
-    
+
+    // Wait for dropdown to open (poll aria-expanded up to ~600ms)
+    for (let i = 0; i < 3; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      if (el.getAttribute('aria-expanded') === 'true') break;
+    }
+
+    // Wait for options to render (they appear after dropdown opens)
+    const _listbox = document.getElementById(el.id + '-listbox');
+    if (_listbox) {
+      for (let i = 0; i < 5; i++) {
+        const items = _listbox.querySelectorAll('[role="gridcell"], [role="option"], .cx-select__list-item');
+        if (items.length > 0) break;
+        await new Promise(r => setTimeout(r, 150));
+      }
+    }
+
+    const valueLower = valueStr.toLowerCase().trim();
+    let match = null;
+
+    // First: check the dedicated listbox (fastest, most specific)
+    const listbox = document.getElementById(el.id + '-listbox');
+    if (listbox) {
+      const items = listbox.querySelectorAll('[role="gridcell"], [role="option"], .cx-select__list-item');
+      match = Array.from(items).find(o =>
+        o.textContent.trim().toLowerCase() === valueLower
+      );
+      if (!match) {
+        match = Array.from(items).find(o =>
+          o.textContent.trim().toLowerCase().startsWith(valueLower) ||
+          valueLower.startsWith(o.textContent.trim().toLowerCase())
+        );
+      }
+    }
+
+    // Fallback: search all dropdown selectors on page
+    if (!match) {
+      const selectors = ['.cx-select__list-item', '[role="option"]', '.oj-select-choice', '[role="gridcell"]'];
+      for (const sel of selectors) {
+        const options = document.querySelectorAll(sel);
+        if (options.length === 0) continue;
+        match = Array.from(options).find(o =>
+          o.textContent.trim().toLowerCase() === valueLower
+        );
+        if (match) break;
+        match = Array.from(options).find(o =>
+          o.textContent.trim().toLowerCase().startsWith(valueLower) ||
+          valueLower.startsWith(o.textContent.trim().toLowerCase())
+        );
+        if (match) break;
+      }
+    }
+
     if (match) {
       match.click();
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 150));
       // Oracle CX combobox: value is stored in toggle button text, not input value.
       // Check both input value and toggle button text.
       const toggle = document.getElementById(el.id + '-toggle-button');
@@ -587,17 +629,24 @@ FormDetector.fillOracleCombobox = async function(el, value) {
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
-        console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy OK (toggle="${toggleText}")`);
+        console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy OK (toggle="${toggleText}") +${Date.now()-_t}ms`);
         return true;
       }
       console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: option clicked but value not confirmed (input="${inputVal}" toggle="${toggleText}")`);
+    } else {
+      // Close the dropdown if no match found
+      const closeBtn = document.getElementById(el.id + '-toggle-button');
+      if (closeBtn && el.getAttribute('aria-expanded') === 'true') closeBtn.click();
     }
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: no option found`);
+    console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: no option found for "${valueStr}"`);
   } catch(e) {
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy error: ${e.message}`);
   }
   
   // Strategy 2: Paste approach (InputEvent insertFromPaste)
+  // NOTE: Paste sets el.value but may not update React/Knockout state.
+  // For comboboxes, also verify toggle button text changed — if not,
+  // the paste didn't really work and we fall through to char-by-char.
   try {
     el.focus();
     el.value = '';
@@ -614,11 +663,17 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
     el.blur();
     await new Promise(r => setTimeout(r, 300));
-    if (el.value === valueStr) {
-      console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste OK`);
+    const toggle = document.getElementById(el.id + '-toggle-button');
+    const toggleText = toggle?.textContent?.trim()?.toLowerCase() || '';
+    const inputVal = el.value?.toLowerCase() || '';
+    const valLower = valueStr.toLowerCase();
+    // Paste only truly worked if toggle OR input has the value
+    if ((inputVal === valLower || toggleText === valLower ||
+         toggleText.startsWith(valLower) || valLower.startsWith(toggleText)) && toggleText) {
+      console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste OK (toggle="${toggleText}")`);
       return true;
     }
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste: value didn't stick`);
+    console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste: input="${inputVal}" toggle="${toggleText}" — not confirmed, falling through`);
   } catch(e) {
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste error: ${e.message}`);
   }
@@ -646,13 +701,17 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char error: ${e.message}`);
   }
   
-  console.log(`JC: fillOracleCombobox [${fieldLabel}] → ALL strategies failed for "${valueStr}"`);
+  console.log(`JC: fillOracleCombobox [${fieldLabel}] → ALL strategies failed for "${valueStr}" +${Date.now()-_t}ms`);
   return false;
 };
 
 FormDetector.isOracleCombobox = function(el) {
-  // Checks role=combobox or inside .cx-select.
-  return el.getAttribute('role') === 'combobox' || !!el.closest('.cx-select');
+  // Checks role=combobox, or inside .cx-select / .cx-select-container.
+  // Date comboboxes use cx-select-container (React), not cx-select.
+  return el.getAttribute('role') === 'combobox' ||
+         !!el.closest('.cx-select') ||
+         !!el.closest('.cx-select-container') ||
+         el.classList.contains('cx-select-input');
 };
 
 // Debug logging — call this to log all detected fields to console
