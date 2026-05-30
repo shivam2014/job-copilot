@@ -59,6 +59,7 @@
   document.head.appendChild(style);
   console.log('JC: Styles injected');
 })();
+
 // ═══════════════════════════════════════════════════════════════
 // Content script — THE ORCHESTRATOR
 // ═══════════════════════════════════════════════════════════════
@@ -227,6 +228,7 @@ function createPanel() {
     await fillExperience();
     await fillEducation();
     await fillSkills();
+    await fillLanguages();
     await fillAIQuestions();
     await fillApplicationQuestions();
     await fillLearnedRadios();
@@ -367,7 +369,7 @@ async function fillSingleField(field) {
 
   // Textarea → call LLM
   if (field.el instanceof HTMLTextAreaElement) {
-    const profile = await chrome.storage.sync.get(['llm_base_url', 'llm_api_key', 'llm_model']);
+  const profile = await chrome.storage.sync.get(['llm_base_url', 'llm_api_key', 'llm_model']);
     const resumeText = await getResumeText();
     if (!resumeText) {
       showStatus('No resume — upload PDF in settings first.', 'error');
@@ -410,7 +412,6 @@ async function fillSingleField(field) {
     showStatus('Skipped "' + fieldLabel + '" (type mismatch)', 'info');
     return;
   }
-
   const ok = await FormDetector.fillField(field, value);
   if (ok) {
     listenForCorrections([field.el]);
@@ -460,9 +461,9 @@ async function fillPersonal() {
   let filled = 0;
   const filledEls = [];
   for (const field of [...fields.personal, ...fields.selects]) {
-    const value = fillMap[field.name];  // Step 5: lookup by field identity
+  const value = fillMap[field.name];  // Step 5: lookup by field identity
     if (value && !skipFieldForType(field, value)) {
-      const ok = await FormDetector.fillField(field, value);
+  const ok = await FormDetector.fillField(field, value);
       if (ok) { filled++; filledEls.push(field.el); }
     }
   }
@@ -789,7 +790,7 @@ async function fillExperience() {
         'dubai': 'United Arab Emirates', 'tel aviv': 'Israel',
       };
       const country = cityCountryMap[(exp.city || '').toLowerCase()] || '';
-      if (country) await fillExpField(empCountry, country, "employerCountry");
+      if (country) { const field = { el: empCountry, name: "country", label: "Employer Country" }; await FormDetector.fillField(field, country); }
     }
 
     // Fill Employer City — find the LAST one
@@ -800,7 +801,15 @@ async function fillExperience() {
     // Fill Responsibilities — find the LAST textarea
     const allResp = document.querySelectorAll('textarea[name="responsibilities"]');
     const resp = allResp.length > 0 ? allResp[allResp.length - 1] : null;
-    if (resp && exp.description) await fillExpField(resp, exp.description, "responsibilities");
+    if (resp) {
+      let descText = '';
+      if (Array.isArray(exp.description)) {
+        descText = exp.description.map(d => '\u2022 ' + d).join('\n');
+      } else if (typeof exp.description === 'string') {
+        descText = exp.description;
+      }
+      if (descText) await fillExpField(resp, descText, 'responsibilities');
+    }
 
     // Step 3: Click the SUBMIT button to save this entry.
     // The "Add Experience" button at the bottom of the open form is the submit.
@@ -893,7 +902,8 @@ async function fillEducation() {
     const degree = allDegrees.length > 0 ? allDegrees[allDegrees.length - 1] : null;
     if (degree && edu.degree) {
       const normalized = degreeMap[edu.degree.toLowerCase()] || edu.degree;
-      const ok = await fillExpField(degree, normalized, 'degree');
+      const field = { el: degree, name: 'degree', label: 'Degree' };
+      const ok = await FormDetector.fillField(field, normalized);
       console.log('JC: edu degree → ' + ok + ' "' + (degree.value || '') + '"');
     }
 
@@ -901,7 +911,8 @@ async function fillEducation() {
     const allSchools = document.querySelectorAll('[name="educationalEstablishment"]');
     const school = allSchools.length > 0 ? allSchools[allSchools.length - 1] : null;
     if (school && edu.school) {
-      const ok = await fillExpField(school, edu.school, 'school');
+      const field = { el: school, name: 'school', label: 'School' };
+      const ok = await FormDetector.fillField(field, edu.school);
       console.log('JC: edu school → ' + ok + ' "' + (school.value || '') + '"');
     }
 
@@ -913,7 +924,8 @@ async function fillEducation() {
       let eduLevel = 'Bachelors Degree';
       if (dl.includes('master') || dl.includes('msc') || dl.includes('m.s')) eduLevel = 'Masters Degree';
       else if (dl.includes('phd') || dl.includes('doctor')) eduLevel = 'Doctorate';
-      const ok = await fillExpField(level, eduLevel, 'level');
+      const field = { el: level, name: 'level', label: 'Level' };
+      const ok = await FormDetector.fillField(field, eduLevel);
       console.log('JC: edu level → ' + ok + ' "' + (level.value || '') + '"');
     }
 
@@ -994,14 +1006,35 @@ async function fillSkills() {
     }
   }
 
-  // [FIX] Don't click "Add More Skills" — it opens a form that replaces
-  // the skill suggestion buttons. Only click the pre-populated suggestions.
-  // Unmatched skills are skipped (they'd require the form which is destructive).
-
-  const total = addedFromSuggestions;
+  // [FIX] For unmatched skills, use "Add More Skills" search form.
+  let addedCustom = 0;
+  for (const skill of unmatchedSkills.slice(0, 15)) {
+    const addMoreBtn = Array.from(document.querySelectorAll('button')).find(b =>
+      (b.textContent || '').trim() === 'Add More Skills' && (b.id || '').includes('profileItemsAddButton')
+    );
+    if (!addMoreBtn) { console.log('JC: No "Add More Skills" button'); break; }
+    addMoreBtn.click();
+    await new Promise(r => setTimeout(r, 3000));
+    const skillCombos = document.querySelectorAll('[name="contentItemId"][role="combobox"]');
+    const skillCombo = skillCombos.length > 0 ? skillCombos[skillCombos.length - 1] : null;
+    if (!skillCombo) { console.log('JC: No skill combobox found'); break; }
+    const field = { el: skillCombo, name: 'skill', label: 'Skill' };
+    await FormDetector.fillField(field, skill);
+    await new Promise(r => setTimeout(r, 500));
+    const submitBtn = Array.from(document.querySelectorAll('button')).find(b =>
+      (b.textContent || '').trim() === 'Add More Skills' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
+    );
+    if (submitBtn) { submitBtn.click(); await new Promise(r => setTimeout(r, 1500)); addedCustom++; }
+    else {
+      const cancel = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim() === 'Cancel');
+      if (cancel) cancel.click();
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  const total = addedFromSuggestions + addedCustom;
   if (total > 0) {
     showStatus('Added ' + total + ' skill(s)', 'success');
-    console.log('JC: Added ' + addedFromSuggestions + ' from suggestions, ' + Math.min(unmatchedSkills.length, 10) + ' custom');
+    console.log('JC: Added ' + addedFromSuggestions + ' from suggestions, ' + addedCustom + ' custom');
   }
 }
 
@@ -1087,6 +1120,75 @@ async function fillApplicationQuestions() {
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// fillLanguages() — fills language entries from resume data
+// ═══════════════════════════════════════════════════════════════
+async function fillLanguages() {
+  const data = await chrome.storage.sync.get('resume_full_data');
+  if (!data.resume_full_data) { console.log('JC: No resume_full_data — skipping languages'); return; }
+  let resumeData;
+  try { resumeData = JSON.parse(data.resume_full_data); } catch { return; }
+  const languages = resumeData.rawSections?.languages || [];
+  if (languages.length === 0) { console.log('JC: No languages in resume'); return; }
+  console.log('JC: fillLanguages — ' + languages.length + ' entries found');
+
+  function mapLevel(level) {
+    if (!level) return 'Professional Working Proficiency';
+    const l = level.toLowerCase().trim();
+    if (l.includes('native') || l === 'c2') return 'Native or Bilingual Proficiency';
+    if (l.includes('fluent') || l.includes('full professional') || l === 'c1') return 'Full Professional Proficiency';
+    if (l.includes('b2') || l.includes('professional working')) return 'Professional Working Proficiency';
+    if (l.includes('b1') || l.includes('limited working')) return 'Limited Working Proficiency';
+    if (l.includes('a2') || l.includes('elementary')) return 'Elementary Proficiency';
+    if (l.includes('a1') || l.includes('no proficiency')) return 'No Proficiency';
+    return 'Professional Working Proficiency';
+  }
+
+  let filled = 0;
+  for (const lang of languages) {
+    const langName = typeof lang === 'string' ? lang : lang.name;
+    const langLevel = typeof lang === 'object' ? lang.level : '';
+    if (!langName) continue;
+
+    const addBtn = Array.from(document.querySelectorAll('button')).find(b =>
+      (b.textContent || '').trim() === 'Add Language' && (b.id || '').includes('profileItemsAddButton')
+    );
+    if (!addBtn) { console.log('JC: No "Add Language" trigger found'); break; }
+    const rect = addBtn.getBoundingClientRect();
+    const opts = { bubbles: true, cancelable: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, view: window, button: 0 };
+    addBtn.dispatchEvent(new PointerEvent('pointerdown', opts));
+    addBtn.dispatchEvent(new MouseEvent('mousedown', opts));
+    await new Promise(r => setTimeout(r, 50));
+    addBtn.dispatchEvent(new PointerEvent('pointerup', opts));
+    addBtn.dispatchEvent(new MouseEvent('mouseup', opts));
+    addBtn.dispatchEvent(new MouseEvent('click', opts));
+    await new Promise(r => setTimeout(r, 3000));
+
+    const allLangCombos = document.querySelectorAll('[name="contentItemId"][role="combobox"]');
+    const langCombo = allLangCombos.length > 0 ? allLangCombos[allLangCombos.length - 1] : null;
+    if (langCombo) {
+      const field = { el: langCombo, name: 'language', label: 'Language' };
+      await FormDetector.fillField(field, langName);
+    }
+
+    const pillText = mapLevel(langLevel);
+    const pills = document.querySelectorAll('.cx-select-pill-section button, button.cx-select-pill');
+    for (const pill of pills) {
+      if (pill.offsetHeight === 0) continue;
+      if ((pill.textContent || '').trim() === pillText) { pill.click(); break; }
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+    const submitBtn = Array.from(document.querySelectorAll('button')).find(b =>
+      (b.textContent || '').trim() === 'Add Language' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
+    );
+    if (submitBtn) { submitBtn.click(); await new Promise(r => setTimeout(r, 2000)); }
+    filled++;
+  }
+  if (filled > 0) { showStatus('Added ' + filled + ' language(s)', 'success'); }
+}
+
 // ── Shared Helpers ─────────────────────────────────────────────────
 
 // Step 4: build a value dictionary from your stored profile data.
@@ -1142,9 +1244,9 @@ async function buildFillMap() {
     website: profile.profile_website || profile.profile_linkedin || '',
     address: hasMultiPartAddr ? '' : address,
     street_address: parseAddr,
-    city: parseCity,
-    state: '',
-    postal_code: '',
+    city: parseCity || (function() { try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.city || ''; } catch { return ''; } })(),
+    state: (function() { try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.state || ''; } catch { return ''; } })(),
+    postal_code: (function() { try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.postal_code || ''; } catch { return ''; } })(),
     // [FIX] Country fallback from resume data when profile_address is empty.
     // Resume extraction stores country in extractedFields.country (e.g., "Poland").
     country: parseCountry || (function() {

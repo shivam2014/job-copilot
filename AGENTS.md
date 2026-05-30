@@ -10,6 +10,9 @@ node -c extension/content/form-detector.js    # syntax check
 node scripts/test/inspect.mjs                 # inspect form state
 node scripts/test/clear.mjs                   # clear all fields + tiles
 node scripts/test/fill.mjs                    # run Fill All + report
+node scripts/test/test_individual_fields.mjs --skip-llm  # test each F button
+node scripts/test/trace_field.mjs city        # trace a specific field fill
+node scripts/test/reload_extension.mjs        # reload extension via chrome://extensions
 node scripts/keep_alive.mjs &                 # launch Chrome with extension
 ```
 
@@ -45,6 +48,10 @@ scripts/
 - **Tiles**: Hover → click Delete button
 
 ## Key Learnings
+
+**Extension Reload (CRITICAL):** chrome://extensions reload button works but you MUST `page.reload()` the target page afterward for new content script to inject. Without it, old code keeps running. Always: reload extension → reload page → wait 8s.
+
+**Content Script Debugging:** Use numbered `console.log('JC-TRACE: N:description')` to trace execution. Content scripts run in isolated world — `page.evaluate()` can't access their variables. Read storage from options page instead.
 - **CSS injection**: Manifest CSS unreliable after reload. Inject via `<style>` tag in content.js
 - **Chrome lifecycle**: Two-process: keep_alive.mjs (owns Chrome) + connect.mjs (connect/disconnect). Never kill Chrome between commands
 - **Viewport**: Always `viewport: null` + `--start-maximized`
