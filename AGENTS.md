@@ -33,16 +33,22 @@ extension/
 └── manifest.json            — Chrome MV3 manifest
 scripts/
 ├── keep_alive.mjs           — Chrome launcher (viewport:null, remote-debugging-port)
-├── reload_extension.mjs     — Reload ext + refresh page (Playwright CDP)
+├── reload_extension.mjs     — Thin wrapper: cdc reload-ext+page
+├── cdp_adv.mjs              — Oracle-specific: fresh tab + console suppression
+├── email_step.mjs           — Oracle-specific: email verification
+├── quick_test.mjs           — Oracle-specific: quick CDP test
+├── launch_with_ext.mjs      — Chrome launcher with extension loading
+├── launch_persistent.mjs    — Chrome launcher with persistent profile
 ├── test/lib.mjs             — Shared: connect(), getVisibleFields(), screenshot()
-├── test/inspect.mjs         — List tiles + fields, values, headings
-├── test/clear.mjs           — Delete tiles + clear inputs (with timing)
+├── test/inspect.mjs         — Uses cdc layout for fields + tile detection
+├── test/clear.mjs           — Delete tiles + clear inputs (Oracle-specific tiles)
 ├── test/fill.mjs            — Click Fill All, poll __jcFilling, report
 ├── test/fill_section.mjs    — Fill one section via service worker message
-├── test/check_ext_errors.mjs — Read extension errors from chrome://extensions
-├── test/trace_combobox_options.mjs — Inspect combobox dropdown options
-├── test/test_skills_section.mjs — Inspect skills section UI structure
-└── test/screenshot.mjs      — Take screenshot
+├── test/check_ext_errors.mjs — Uses cdc ext-errors
+├── test/screenshot.mjs      — Uses cdc screenshot
+└── test/trace_*.mjs         — Oracle-specific debugging scripts
+
+External tool: cdc (~/tools/chrome-cdp/) — project-agnostic Chrome DevTools CLI
 ```
 
 ## 3 Interactions

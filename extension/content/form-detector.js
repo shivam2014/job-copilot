@@ -379,7 +379,13 @@ const FormDetector = {
     if (el.type === 'file') return false;
 
     // ── ORACLE CUSTOM COMBOBOX ─────────────────────────────────
-    if (this.isOracleCombobox(el)) {
+    // Only treat as combobox if it's NOT a plain text input without a toggle.
+    // Some fields (like postalCode) have role="combobox" + are inside
+    // .cx-select-container, but are actually text inputs with autocomplete.
+    // These should use fillTextInput(), not fillOracleCombobox().
+    // However, if the text input has a toggle button, it's a real combobox.
+    const hasToggle = document.getElementById(el.id + '-toggle-button');
+    if (this.isOracleCombobox(el) && (el.type !== 'text' || hasToggle)) {
       return await this.fillOracleCombobox(el, valueStr);
     }
 
@@ -634,7 +640,45 @@ FormDetector.fillOracleCombobox = async function(el, value) {
       }
       console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: option clicked but value not confirmed (input="${inputVal}" toggle="${toggleText}")`);
     } else {
-      // Close the dropdown if no match found
+      // No options found via toggle button — try typeahead approach.
+      // Type a prefix of the value to trigger the dropdown, then find the match.
+      const prefix = valueStr.substring(0, Math.min(3, valueStr.length));
+      el.focus();
+      el.value = prefix;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: prefix.slice(-1), bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: prefix.slice(-1), bubbles: true }));
+
+      // Wait for typeahead options to load
+      await new Promise(r => setTimeout(r, 1500));
+      const listbox2 = document.getElementById(el.id + '-listbox');
+      if (listbox2) {
+        const items2 = listbox2.querySelectorAll('[role="gridcell"], [role="option"], .cx-select__list-item');
+        match = Array.from(items2).find(o =>
+          o.textContent.trim().toLowerCase() === valueLower
+        );
+        if (!match) {
+          match = Array.from(items2).find(o =>
+            o.textContent.trim().toLowerCase().includes(valueLower) ||
+            valueLower.includes(o.textContent.trim().toLowerCase())
+          );
+        }
+        if (match) {
+          match.click();
+          await new Promise(r => setTimeout(r, 150));
+          const toggle = document.getElementById(el.id + '-toggle-button');
+          const toggleText = toggle?.textContent?.trim()?.toLowerCase() || '';
+          const inputVal = el.value?.toLowerCase() || '';
+          if (inputVal === valueLower || toggleText === valueLower) {
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.blur();
+            console.log(`JC: fillOracleCombobox [${fieldLabel}] → typeahead strategy OK +${Date.now()-_t}ms`);
+            return true;
+          }
+        }
+      }
+      // Close dropdown if still open
       const closeBtn = document.getElementById(el.id + '-toggle-button');
       if (closeBtn && el.getAttribute('aria-expanded') === 'true') closeBtn.click();
     }

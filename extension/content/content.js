@@ -1425,8 +1425,9 @@ function skipFieldForType(field, value) {
     }
     // Don't skip — let fillField() handle it
   }
-  if (field.el.type === 'url' && /^[\d\s\-+()]{6,}$/.test(value)) return true;
-  if (field.name === 'street_address' && !/\d/.test(value)) return true;
+  if (field.el.type === 'url' && /[\d\s\-+()]{6,}/.test(value)) return true;
+  // [FIX] Removed overly aggressive street_address check — many valid addresses
+  // don't contain digits (e.g., "Grabiszyńska", "Main Street", "Oak Avenue").
   if (field.name === 'address' && value.includes(',')) return true;
   if (field.name === 'postal_code' && (value.length < 3 || /^[a-zA-Z\s]{3,}$/.test(value))) return true;
   if (field.name === 'state' && value.length > 20) return true;
@@ -1459,7 +1460,7 @@ function listenForCorrections(filledEls) {
     seen.add(el);
     if (!el || !el.dataset) continue;
 
-    const fieldName = field.name || el.name || el.id;
+    const fieldName = el.name || el.id || 'custom';
     const filledValue = el.value;
     el.dataset.jcFilled = 'true';
     el.dataset.jcValue = filledValue;
