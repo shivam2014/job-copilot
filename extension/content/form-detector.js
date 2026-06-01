@@ -570,9 +570,9 @@ FormDetector.fillOracleCombobox = async function(el, value) {
       el.click();
     }
 
-    // Wait for dropdown to open (poll aria-expanded up to ~600ms)
+    // Wait for dropdown to open (poll aria-expanded up to ~900ms)
     for (let i = 0; i < 3; i++) {
-      await new Promise(r => setTimeout(r, 200));
+      await new Promise(r => setTimeout(r, 300));
       if (el.getAttribute('aria-expanded') === 'true') break;
     }
 
@@ -582,7 +582,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
       for (let i = 0; i < 5; i++) {
         const items = _listbox.querySelectorAll('[role="gridcell"], [role="option"], .cx-select__list-item');
         if (items.length > 0) break;
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, 250));
       }
     }
 
@@ -624,7 +624,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
 
     if (match) {
       match.click();
-      await new Promise(r => setTimeout(r, 150));
+      await new Promise(r => setTimeout(r, 300));
       // Oracle CX combobox: value is stored in toggle button text, not input value.
       // Check both input value and toggle button text.
       const toggle = document.getElementById(el.id + '-toggle-button');
@@ -642,15 +642,21 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     } else {
       // No options found via toggle button — try typeahead approach.
       // Type a prefix of the value to trigger the dropdown, then find the match.
-      const prefix = valueStr.substring(0, Math.min(3, valueStr.length));
+      const prefix = valueStr.substring(0, Math.min(5, valueStr.length));
       el.focus();
-      el.value = prefix;
+      el.value = '';
       el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: prefix.slice(-1), bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent('keyup', { key: prefix.slice(-1), bubbles: true }));
+      // Type each character individually — Oracle's autocomplete triggers on keyboard events
+      for (let i = 0; i < prefix.length; i++) {
+        el.value = prefix.substring(0, i + 1);
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: prefix[i], bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { key: prefix[i], bubbles: true }));
+        await new Promise(r => setTimeout(r, 80));
+      }
 
       // Wait for typeahead options to load
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 2500));
       const listbox2 = document.getElementById(el.id + '-listbox');
       if (listbox2) {
         const items2 = listbox2.querySelectorAll('[role="gridcell"], [role="option"], .cx-select__list-item');
@@ -731,12 +737,13 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     for (let i = 0; i < valueStr.length; i++) {
       el.value = valueStr.substring(0, i + 1);
       el.dispatchEvent(new Event('input', { bubbles: true }));
-      await new Promise(r => setTimeout(r, 30));
+      await new Promise(r => setTimeout(r, 80));
     }
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.blur();
+    await new Promise(r => setTimeout(r, 200));
     if (el.value === valueStr) {
       console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char OK`);
       return true;
