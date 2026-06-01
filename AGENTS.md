@@ -58,7 +58,9 @@ External tool: cdc (~/tools/chrome-cdp/) — project-agnostic Chrome DevTools CL
 
 ## Fill Strategy (form-detector.js)
 - **Text inputs**: Paste first (`InputEvent insertFromPaste`), char-by-char fallback
-- **Comboboxes**: Click toggle button (`#{id}-toggle-button`) → poll `aria-expanded` → wait for options to render in `#{id}-listbox` → find matching option by text → click. Falls back to paste, then char-by-char. Check toggle button text (Oracle stores value there, not input.value)
+- **Comboboxes (toggle-button)**: Click toggle button (`#{id}-toggle-button`) → poll `aria-expanded` → wait for options to render in `#{id}-listbox` → find matching option by text → click. Falls back to paste, then char-by-char. Check toggle button text (Oracle stores value there, not input.value)
+- **Comboboxes (typeahead)**: Some comboboxes (e.g., postalCode) don't open via toggle button. Need to type a prefix first → wait for options → find match → click. Added typeahead fallback in fillOracleCombobox Strategy 1.
+- **Combobox routing**: `isOracleCombobox(el) && (el.type !== 'text' || hasToggle)` — text inputs with toggle button are real comboboxes, text inputs without are autocomplete fields that should use fillTextInput()
 - **Selects**: 4-phase matching: exact → startsWith → word-boundary → includes
 - **Tiles**: Hover → click Delete button (force click for Oracle React)
 - **Real mouse events**: Oracle React ignores synthetic `click()`. Skills suggestions, language pills, education Add, and submit buttons need PointerEvent + mousedown + mouseup + click sequence
@@ -79,6 +81,11 @@ External tool: cdc (~/tools/chrome-cdp/) — project-agnostic Chrome DevTools CL
 - **Paste fill**: `InputEvent(insertFromPaste)` works for text fields. Comboboxes need toggle button click + option selection
 - **Learning system**: Saves on blur (every blur, not just first). Uses generic category keys (`street_address`, `city`, etc.) for cross-portal compatibility. `setFilling()` syncs state to `document.documentElement.dataset.jcFilling` for external polling
 - **LLM not configured**: `fillAIQuestions()` early-returns silently. Don't use `console.error` — causes extension error badge
+- **listenForCorrections bug**: `field.name` referenced but `field` not in scope — function receives `filledEls` (elements), not field objects. Fixed to use `el.name`
+- **skipFieldForType bug**: `street_address` check `!/\d/.test(value)` skipped valid addresses without digits (e.g., "Grabiszyńska"). Removed.
+- **Content script isolated world**: `page.evaluate()` dispatches events in page world, NOT content script world. Clicking F buttons via `page.evaluate()` doesn't trigger onclick handlers set by content script. Use Playwright's `page.click()` directly on the element instead.
+- **cdc fill verification**: Oracle/Knockout/React clear values async after blur. `cdc fill` now waits 500ms then verifies actual value. Reports `value_rejected` when framework clears.
+- **cdc ext-errors cleanup**: Always close `chrome://extensions` tab in `finally` block. Previous calls left tabs open.
 
 ## Session Workflow
 1. Launch: `node scripts/keep_alive.mjs &`
