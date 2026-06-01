@@ -158,13 +158,6 @@ function getFieldCategory(fieldName) {
   return fieldCategoryMap[fieldName] || fieldName;
 }
 
-// Get all portal-specific keys that map to the same category
-function getKeysForCategory(category) {
-  return Object.entries(fieldCategoryMap)
-    .filter(([_, cat]) => cat === category)
-    .map(([key]) => key);
-}
-
 // ── Global Learning ──────────────────────────────────────────────────
 // Attaches blur listeners to ALL detected text inputs/textareas.
 // When you manually fill a field JC didn't touch (address, street, etc.),
@@ -449,6 +442,17 @@ async function getResumeText() {
   return '';
 }
 
+// Get a specific section from resume_full_data.
+// Returns array of items or null if no resume data.
+async function getResumeSection(sectionName) {
+  const data = await chrome.storage.sync.get('resume_full_data');
+  if (!data.resume_full_data) return null;
+  try {
+    const parsed = JSON.parse(data.resume_full_data);
+    return parsed.rawSections?.[sectionName] || [];
+  } catch { return null; }
+}
+
 // TRIGGER: user clicks the per-field "F" button (hover to reveal).
 // Same logic as fillAll but for one field. Textareas go to the LLM
 // (Step 9-10 path), everything else goes to the profile fill map
@@ -691,16 +695,8 @@ async function fillLearnedRadios() {
 // handle Oracle CX, Workday, and generic dropdowns.
 async function fillExperience() {
   const _t0 = Date.now();
-  const data = await chrome.storage.sync.get('resume_full_data');
-  if (!data.resume_full_data) {
-    console.log('JC: No resume_full_data — skipping experience');
-    return;
-  }
-
-  let resumeData;
-  try { resumeData = JSON.parse(data.resume_full_data); } catch { return; }
-  const experiences = resumeData.rawSections?.experience || [];
-  if (experiences.length === 0) {
+  const experiences = await getResumeSection('experience');
+  if (!experiences || experiences.length === 0) {
     console.log('JC: No experience entries in resume');
     return;
   }
@@ -941,13 +937,8 @@ async function fillExperience() {
 // Oracle CX education fields use comboboxes for Degree, School,
 // and Education Level — all handled by FormDetector.fillField().
 async function fillEducation() {
-  const data = await chrome.storage.sync.get('resume_full_data');
-  if (!data.resume_full_data) { console.log('JC: No resume_full_data — skipping education'); return; }
-
-  let resumeData;
-  try { resumeData = JSON.parse(data.resume_full_data); } catch(e) { console.log('JC: Education parse error:', e.message); return; }
-  const education = resumeData.rawSections?.education || [];
-  if (education.length === 0) { console.log('JC: No education entries in resume'); return; }
+  const education = await getResumeSection('education');
+  if (!education || education.length === 0) { console.log('JC: No education entries in resume'); return; }
   console.log('JC: fillEducation — ' + education.length + ' entries found');
 
   const degreeMap = {
@@ -1066,13 +1057,8 @@ async function fillEducation() {
 //
 // Works across ATS: Greenhouse and Lever have similar skill tag UIs.
 async function fillSkills() {
-  const data = await chrome.storage.sync.get('resume_full_data');
-  if (!data.resume_full_data) return;
-
-  let resumeData;
-  try { resumeData = JSON.parse(data.resume_full_data); } catch { return; }
-  const skills = resumeData.rawSections?.skills || [];
-  if (skills.length === 0) return;
+  const skills = await getResumeSection('skills');
+  if (!skills || skills.length === 0) return;
 
   // Find all "Add Skill" suggestion buttons
   const skillBtns = Array.from(document.querySelectorAll('button')).filter(b => {
@@ -1256,12 +1242,8 @@ async function fillApplicationQuestions() {
 // fillLanguages() — fills language entries from resume data
 // ═══════════════════════════════════════════════════════════════
 async function fillLanguages() {
-  const data = await chrome.storage.sync.get('resume_full_data');
-  if (!data.resume_full_data) { console.log('JC: No resume_full_data — skipping languages'); return; }
-  let resumeData;
-  try { resumeData = JSON.parse(data.resume_full_data); } catch { return; }
-  const languages = resumeData.rawSections?.languages || [];
-  if (languages.length === 0) { console.log('JC: No languages in resume'); return; }
+  const languages = await getResumeSection('languages');
+  if (!languages || languages.length === 0) { console.log('JC: No languages in resume'); return; }
   console.log('JC: fillLanguages — ' + languages.length + ' entries found');
 
   function mapLevel(level) {
@@ -1370,6 +1352,10 @@ async function buildFillMap() {
   const parseCity = hasMultiPartAddr ? addrParts[addrParts.length - 2] : (addrParts.length === 2 ? addrParts[0] : '');
   const parseCountry = addrParts.length > 0 ? addrParts[addrParts.length - 1] : '';
 
+  // Cache: parse resume_full_data once for extractedFields fallbacks
+  let extracted = {};
+  try { extracted = JSON.parse(profile.resume_full_data || '{}').extractedFields || {}; } catch {}
+
   return {
     name: nameStr,
     first_name: firstName,
@@ -1397,14 +1383,12 @@ async function buildFillMap() {
     website: profile.profile_website || profile.profile_linkedin || '',
     address: hasMultiPartAddr ? '' : address,
     street_address: parseAddr,
-    city: parseCity || (function() { try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.city || ''; } catch { return ''; } })(),
-    state: (function() { try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.state || ''; } catch { return ''; } })(),
-    postal_code: (function() { try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.postal_code || ''; } catch { return ''; } })(),
+    city: parseCity || extracted.city || '',
+    state: extracted.state || '',
+    postal_code: extracted.postal_code || '',
     // [FIX] Country fallback from resume data when profile_address is empty.
     // Resume extraction stores country in extractedFields.country (e.g., "Poland").
-    country: parseCountry || (function() {
-      try { return JSON.parse(profile.resume_full_data || '{}').extractedFields?.country || ''; } catch { return ''; }
-    })(),
+    country: parseCountry || extracted.country || '',
     work_authorization: profile.profile_work_authorization,
   };
 }

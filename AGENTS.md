@@ -34,11 +34,6 @@ extension/
 scripts/
 ├── keep_alive.mjs           — Chrome launcher (viewport:null, remote-debugging-port)
 ├── reload_extension.mjs     — Thin wrapper: cdc reload-ext+page
-├── cdp_adv.mjs              — Oracle-specific: fresh tab + console suppression
-├── email_step.mjs           — Oracle-specific: email verification
-├── quick_test.mjs           — Oracle-specific: quick CDP test
-├── launch_with_ext.mjs      — Chrome launcher with extension loading
-├── launch_persistent.mjs    — Chrome launcher with persistent profile
 ├── test/lib.mjs             — Shared: connect(), getVisibleFields(), screenshot()
 ├── test/inspect.mjs         — Uses cdc layout for fields + tile detection
 ├── test/clear.mjs           — Delete tiles + clear inputs (Oracle-specific tiles)

@@ -5,17 +5,17 @@ _Auto-maintained by `/filetree:update`. Each entry carries a content hash; misma
 ## (root)/
 
 - `.gitignore` — Git ignore rules for node_modules, .chrome-profile, .reasonix, and test artifacts <!--hash:929fe5d4-->
-- `AGENTS.md` — Agent contract: project map reference, architecture overview, quick commands <!--hash:2ffac624-->
-- `ARCHITECTURE.md` — Project architecture overview and component relationships <!--hash:2ca879c0-->
-- `GUIDE.md` — Session workflow guide: launch, debug, CDP tools, testing protocol <!--hash:e85d7b12-->
-- `HANDBOOK.md` — Current state, known blockers, architecture notes, and development setup <!--hash:01494538-->
+- `AGENTS.md` — Agent contract: project map reference, architecture overview, quick commands <!--hash:3fedaf00-->
+- `ARCHITECTURE_VISUAL.html` — Visual architecture diagram of extension components and data flow <!--hash:2ce06526-->
 - `LICENSE` — MIT license file for the Job Copilot project <!--hash:3f202a39-->
-- `README.md` — Project readme with installation instructions and feature overview <!--hash:a3b33d21-->
-- `RESEARCH.md` — Research on autofill techniques for Oracle CX and Workday forms <!--hash:f1f29311-->
-- `SESSION_START.md` — Startup checklist and golden rules for every session <!--hash:578a08bd-->
-- `package.json` — Node.js package config with Playwright dev dependency <!--hash:5df512b6-->
-- `playwright.config.mjs` — Playwright test configuration for browser automation tests <!--hash:9d096707-->
+- `README.md` — Project readme with installation instructions and feature overview <!--hash:6d9c9faa-->
+- `package.json` — Node.js package config with Playwright dev dependency <!--hash:259dc9dc-->
 - `test_extract.py` — Python script for resume text extraction and profile parsing <!--hash:b4e3f9da-->
+
+## docs/
+
+- `index.html` — CDC CLI documentation site with command reference and architecture overview <!--hash:2ce06526-->
+- `research.md` — Research notes on Oracle CX form patterns and Knockout.js behavior <!--hash:f1f29311-->
 
 ## extension/
 
@@ -23,18 +23,18 @@ _Auto-maintained by `/filetree:update`. Each entry carries a content hash; misma
 
 ## extension/background/
 
-- `background.js` — Service worker: PDF text extraction, LLM profile extraction, options page opener <!--hash:25673550-->
+- `background.js` — Service worker: PDF text extraction, LLM profile extraction, options page opener <!--hash:310c0031-->
 
 ## extension/content/
 
-- `content.css` — Styles for floating JC button, panel, stats, and per-field fill buttons <!--hash:f461339d-->
-- `content.js` — Panel UI, Fill All, per-field buttons, learning system, SPA observer <!--hash:fb5b97b7-->
-- `form-detector.js` — Field detection patterns, fill routing, Oracle combobox 4-strategy chain <!--hash:350d1c29-->
+- `content.css` — Styles for floating JC button, panel, stats, and per-field fill buttons <!--hash:009ed7a1-->
+- `content.js` — Panel UI, Fill All, per-field buttons, learning system, SPA observer <!--hash:ebe70c2c-->
+- `form-detector.js` — Field detection patterns, fill routing, Oracle combobox 4-strategy chain <!--hash:b6333054-->
 - `form-detector.js.bak2` — Backup of form-detector.js from before simplification <!--hash:d2362fc1-->
 
 ## extension/lib/
 
-- `llm-client.js` — OpenAI-compatible API wrapper for chat and field extraction <!--hash:0bee1411-->
+- `llm-client.js` — OpenAI-compatible API wrapper for chat and field extraction <!--hash:c088d4bb-->
 - `pdf-extract.js` — PDF text and hyperlink extraction using pdf.js for options page <!--hash:bed16398-->
 - `token-tracker.js` — Records LLM token consumption per model with history and summary <!--hash:487138ec-->
 
@@ -45,36 +45,30 @@ _Auto-maintained by `/filetree:update`. Each entry carries a content hash; misma
 
 ## extension/options/
 
-- `options.css` — Styles for extension settings page layout and form elements <!--hash:c21deced-->
-- `options.html` — Settings page: AI engine config, resume upload, profile, learned corrections <!--hash:70e9e43f-->
-- `options.js` — Settings page logic: save/load profile, extract resume, manage corrections <!--hash:67b64d5f-->
+- `options.css` — Styles for extension settings page layout and form elements <!--hash:323cd3a5-->
+- `options.html` — Settings page: AI engine config, resume upload, profile, learned corrections <!--hash:57897b15-->
+- `options.js` — Settings page logic: save/load profile, extract resume, manage corrections <!--hash:0f6ed4a1-->
 
 ## extension/popup/
 
 - `popup.css` — Styles for extension popup layout and button states <!--hash:0238d008-->
 - `popup.html` — Popup UI: field counts, Fill All, Clear All, settings link <!--hash:8f8c60d6-->
-- `popup.js` — Popup logic: ping content script, show field counts, Fill All, Clear All <!--hash:5af9d26e-->
+- `popup.js` — Popup logic: ping content script, show field counts, Fill All, Clear All <!--hash:84409985-->
 
 ## handoff/
 
 - `HANDOFF-2026-05-25.md` — Session handoff from May 25: initial extension setup and Oracle CX testing <!--hash:499e3852-->
 - `HANDOFF-2026-05-26.md` — Session handoff from May 26: combobox strategies, re-fill loop fix, CDP removal <!--hash:68012d30-->
 - `HANDOFF-2026-05-27.md` — Session handoff from May 27: simplified architecture, per-field buttons, dead code removal <!--hash:156c8d4b-->
+- `HANDOFF-2026-05-29.md` — Session handoff from May 29: combobox typeahead, radio button fixes <!--hash:3622ee8a-->
+- `HANDOFF-2026-05-30-session3.md` — Session handoff from May 30 session 3: field debugging iteration <!--hash:7a89cfea-->
+- `HANDOFF-2026-05-30.md` — Session handoff from May 30: CDC CLI build, extension refactoring <!--hash:cb727e1a-->
+- `HANDOFF-2026-05-31.md` — Session handoff from May 31: CDC CLI completion, extension bug fixes <!--hash:d5dd5e56-->
 
 ## scripts/
 
-- `cdp.mjs` — CDP tool: eval JS, navigate, click on Oracle page via WebSocket bridge <!--hash:295bd4c0-->
-- `cdp_adv.mjs` — Advanced CDP: fresh Oracle tab with console suppression <!--hash:416f6ff0-->
-- `cdp_connect.mjs` — CDP WebSocket connection helper for bridge communication <!--hash:940db050-->
-- `dev_launch.sh` — Launch Chrome with JC extension via CDP pipe bridge <!--hash:f0b8895f-->
-- `email_step.mjs` — Navigate to and interact with Oracle CX email step <!--hash:60d1a58a-->
-- `jc_demo_setup.js` — Automated demo setup: fill form fields for screenshots <!--hash:aa58d8a7-->
-- `jc_launch.js` — Chrome launch script with extension loading for development <!--hash:fc0d1a8e-->
-- `jc_quick_test.js` — Quick test script for form detection and filling <!--hash:8a8574ba-->
-- `launch_persistent.mjs` — Launch Chrome with persistent user profile for extension testing <!--hash:335b4c48-->
-- `launch_with_ext.mjs` — Chrome launch via --remote-debugging-pipe with Extensions.loadUnpacked CDP <!--hash:20db3035-->
-- `quick_test.mjs` — Minimal test script for rapid extension validation <!--hash:2e64865c-->
-- `reload_extension.mjs` — Reload extension via Chrome Developer Private API <!--hash:4e350da9-->
+- `keep_alive.mjs` — Chrome launcher with JC extension loaded, remote debugging on port 9222 <!--hash:f69889ea-->
+- `reload_extension.mjs` — Thin wrapper around cdc reload-ext+page for extension hot-reload <!--hash:a30bccc0-->
 
 ## test/
 
