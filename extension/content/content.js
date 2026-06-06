@@ -693,6 +693,15 @@ async function fillLearnedRadios() {
 // Works across ATS platforms: the field detection (employerName, jobTitle,
 // etc.) uses the same identify() scoring, and the combobox strategies
 // handle Oracle CX, Workday, and generic dropdowns.
+const MONTH_MAP = {
+  '01': 'January', '02': 'February', '03': 'March', '04': 'April',
+  '05': 'May', '06': 'June', '07': 'July', '08': 'August',
+  '09': 'September', '10': 'October', '11': 'November', '12': 'December',
+  '1': 'January', '2': 'February', '3': 'March', '4': 'April',
+  '5': 'May', '6': 'June', '7': 'July', '8': 'August',
+  '9': 'September',
+};
+
 async function fillExperience() {
   const _t0 = Date.now();
   const experiences = await getResumeSection('experience');
@@ -700,15 +709,6 @@ async function fillExperience() {
     console.log('JC: No experience entries in resume');
     return;
   }
-
-  const MONTH_MAP = {
-    '01': 'January', '02': 'February', '03': 'March', '04': 'April',
-    '05': 'May', '06': 'June', '07': 'July', '08': 'August',
-    '09': 'September', '10': 'October', '11': 'November', '12': 'December',
-    '1': 'January', '2': 'February', '3': 'March', '4': 'April',
-    '5': 'May', '6': 'June', '7': 'July', '8': 'August',
-    '9': 'September',
-  };
 
   // Helper: fill an Oracle CX text input.
   // Strategy 1: Paste (InputEvent insertFromPaste) — fast, works for most fields.
@@ -1029,6 +1029,50 @@ async function fillEducation() {
       const field = { el: level, name: 'level', label: 'Level' };
       const ok = await FormDetector.fillField(field, eduLevel);
       console.log('JC: edu level → ' + ok + ' "' + (level.value || '') + '"');
+    }
+
+    // Fill Start Date (Month + Year comboboxes)
+    if (edu.start_date) {
+      const parts = edu.start_date.split('/');
+      const monthNum = parts[0] || '';
+      const yearStr = parts[1] || '';
+      const monthName = MONTH_MAP[monthNum] || monthNum;
+
+      const allStartMonths = document.querySelectorAll('[id*="month-startDate"]');
+      const startMonth = allStartMonths.length > 0 ? allStartMonths[allStartMonths.length - 1] : null;
+      if (startMonth && monthName) {
+        const field = { el: startMonth, name: 'startDate', label: 'Start Month' };
+        await FormDetector.fillField(field, monthName);
+      }
+
+      const allStartYears = document.querySelectorAll('[id*="year-startDate"]');
+      const startYear = allStartYears.length > 0 ? allStartYears[allStartYears.length - 1] : null;
+      if (startYear && yearStr) {
+        const field = { el: startYear, name: 'startDate', label: 'Start Year' };
+        await FormDetector.fillField(field, yearStr);
+      }
+    }
+
+    // Fill End Date (Month + Year comboboxes)
+    if (edu.end_date && edu.end_date.toLowerCase() !== 'present') {
+      const parts = edu.end_date.split('/');
+      const monthNum = parts[0] || '';
+      const yearStr = parts[1] || '';
+      const monthName = MONTH_MAP[monthNum] || monthNum;
+
+      const allEndMonths = document.querySelectorAll('[id*="month-endDate"]');
+      const endMonth = allEndMonths.length > 0 ? allEndMonths[allEndMonths.length - 1] : null;
+      if (endMonth && monthName) {
+        const field = { el: endMonth, name: 'endDate', label: 'End Month' };
+        await FormDetector.fillField(field, monthName);
+      }
+
+      const allEndYears = document.querySelectorAll('[id*="year-endDate"]');
+      const endYear = allEndYears.length > 0 ? allEndYears[allEndYears.length - 1] : null;
+      if (endYear && yearStr) {
+        const field = { el: endYear, name: 'endDate', label: 'End Year' };
+        await FormDetector.fillField(field, yearStr);
+      }
     }
 
     // Step 3: Submit the entry
