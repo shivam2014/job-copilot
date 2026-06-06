@@ -1016,6 +1016,23 @@ async function fillEducation() {
       const field = { el: school, name: 'school', label: 'School' };
       const ok = await FormDetector.fillField(field, edu.school);
       console.log('JC: edu school → ' + ok + ' "' + (school.value || '') + '"');
+      // [FIX] Bug #7: School not in Oracle dropdown (e.g., "ISAE-SUPAERO").
+      // fillOracleCombobox found 0 options, left partial text in field.
+      // Fall back to plain text fill: char-by-char + change + blur, no dropdown.
+      if (!ok) {
+        console.log('JC: edu school → dropdown failed, falling back to plain text fill');
+        school.focus();
+        school.value = '';
+        school.dispatchEvent(new Event('input', { bubbles: true }));
+        for (let i = 0; i < edu.school.length; i++) {
+          school.value = edu.school.substring(0, i + 1);
+          school.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 20));
+        }
+        school.dispatchEvent(new Event('change', { bubbles: true }));
+        school.blur();
+        console.log('JC: edu school → fallback fill complete, value="' + (school.value || '') + '"');
+      }
     }
 
     // Education Level
