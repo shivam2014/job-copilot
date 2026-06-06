@@ -915,9 +915,18 @@ async function fillExperience() {
     if (submitBtn) {
       submitBtn.click();
       console.log('JC: Submitted experience entry ' + (filled + 1) + ': ' + (exp.company || 'unknown'));
-      await new Promise(r => setTimeout(r, 500)); // Wait for form to close and tile to appear
     } else {
       console.log('JC: No submit button found for experience entry ' + (filled + 1));
+    }
+
+    // Step 4: Wait for the form to close and the "Add Experience" trigger to reappear.
+    // After submission, Oracle CX may take time to close the form panel and
+    // re-render the "Add Experience" trigger button (profileItemsAddButton).
+    // A fixed delay is unreliable — poll for the trigger with retries instead.
+    // This ensures the next loop iteration finds the trigger immediately.
+    for (let retry = 0; retry < 12; retry++) {
+      await new Promise(r => setTimeout(r, 300));
+      if (findTriggerBtn()) break;
     }
 
     filled++;
