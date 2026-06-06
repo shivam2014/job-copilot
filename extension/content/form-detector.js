@@ -618,6 +618,12 @@ FormDetector.fillOracleCombobox = async function(el, value) {
         o.textContent.trim().toLowerCase() === valueLower
       );
       if (!match) {
+        const _wb = new RegExp('\\b' + valueLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+        match = Array.from(items).find(o =>
+          _wb.test(o.textContent.trim())
+        );
+      }
+      if (!match) {
         match = Array.from(items).find(o =>
           o.textContent.trim().toLowerCase().startsWith(valueLower) ||
           valueLower.startsWith(o.textContent.trim().toLowerCase())
@@ -628,11 +634,16 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     // Fallback: search all dropdown selectors on page
     if (!match) {
       const selectors = ['.cx-select__list-item', '[role="option"]', '.oj-select-choice', '[role="gridcell"]'];
+      const _wb = new RegExp('\\b' + valueLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
       for (const sel of selectors) {
         const options = document.querySelectorAll(sel);
         if (options.length === 0) continue;
         match = Array.from(options).find(o =>
           o.textContent.trim().toLowerCase() === valueLower
+        );
+        if (match) break;
+        match = Array.from(options).find(o =>
+          _wb.test(o.textContent.trim())
         );
         if (match) break;
         match = Array.from(options).find(o =>
@@ -695,9 +706,15 @@ FormDetector.fillOracleCombobox = async function(el, value) {
           o.textContent.trim().toLowerCase() === valueLower
         );
         if (!match) {
+          const _wb = new RegExp('\\b' + valueLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
           match = Array.from(items2).find(o =>
-            o.textContent.trim().toLowerCase().includes(valueLower) ||
-            valueLower.includes(o.textContent.trim().toLowerCase())
+            _wb.test(o.textContent.trim())
+          );
+        }
+        if (!match) {
+          match = Array.from(items2).find(o =>
+            o.textContent.trim().toLowerCase().startsWith(valueLower) ||
+            valueLower.startsWith(o.textContent.trim().toLowerCase())
           );
         }
         if (match) {
