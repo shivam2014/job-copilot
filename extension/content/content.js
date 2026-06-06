@@ -1023,9 +1023,9 @@ async function fillEducation() {
     const level = allLevels.length > 0 ? allLevels[allLevels.length - 1] : null;
     if (level && edu.degree) {
       const dl = edu.degree.toLowerCase();
-      let eduLevel = 'Bachelors Degree';
-      if (dl.includes('master') || dl.includes('msc') || dl.includes('m.s')) eduLevel = 'Masters Degree';
-      else if (dl.includes('phd') || dl.includes('doctor')) eduLevel = 'Doctorate';
+      let eduLevel = "Bachelor's Degree";
+      if (dl.includes('master') || dl.includes('msc') || dl.includes('m.s')) eduLevel = "Master's Degree";
+      else if (dl.includes('phd') || dl.includes('doctor')) eduLevel = "Doctorate Degree";
       const field = { el: level, name: 'level', label: 'Level' };
       const ok = await FormDetector.fillField(field, eduLevel);
       console.log('JC: edu level → ' + ok + ' "' + (level.value || '') + '"');
