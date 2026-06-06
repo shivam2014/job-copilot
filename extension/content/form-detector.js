@@ -27,7 +27,24 @@
 //     everything else    → fillTextInput()       (4-strategy chain)
 // ═══════════════════════════════════════════════════════════════
 
+// ── Trace logging (toggle via FormDetector.trace = true/false) ─────
+// Set to true to see JC-TRACE logs in console. Default: off.
+// Toggle from console: FormDetector.trace = true
+// Toggle from popup:   chrome.storage.sync.set({jc_trace: true})
+let _traceEnabled = false;
+function _trace(msg) {
+  // Check both internal flag and window.__jcTrace (settable from page world)
+  if (_traceEnabled || window.__jcTrace) console.log(msg);
+}
+
+// Load trace setting from storage on init
+try { chrome.storage.sync.get('jc_trace', d => { _traceEnabled = !!d.jc_trace; }); } catch(_) {}
+
 const FormDetector = {
+  // Expose trace toggle
+  get trace() { return _traceEnabled; },
+  set trace(v) { _traceEnabled = !!v; try { chrome.storage.sync.set({jc_trace: _traceEnabled}); } catch(_) {} },
+
   // ── Step 3: The pattern dictionary ─────────────────────────────
   // This is the dictionary that identify() scores against.
   // Keys are profile field names (what buildFillMap() in content.js returns).
@@ -551,11 +568,12 @@ FormDetector.fillOracleCombobox = async function(el, value) {
   const _t = Date.now();
   const valueStr = (value || '').trim();
   if (!valueStr) {
-    console.log('JC: fillOracleCombobox → empty value, skipping');
+    _trace('JC-TRACE: 1:fillOracleCombobox → empty value, skipping');
     return false;
   }
   
   const fieldLabel = el.name || el.id || 'Oracle combobox';
+  _trace(`JC-TRACE: 2:fillOracleCombobox [${fieldLabel}] → start, value="${valueStr}"`);
   
   // Strategy 1: DOM approach — click toggle button to open dropdown, find option, select it
   // Oracle CX React comboboxes open via the toggle button (#{id}-toggle-button),
@@ -564,8 +582,10 @@ FormDetector.fillOracleCombobox = async function(el, value) {
   try {
     const toggleBtn = document.getElementById(el.id + '-toggle-button');
     if (toggleBtn) {
+      _trace(`JC-TRACE: 3:toggle click [${fieldLabel}] → ${toggleBtn.id}`);
       toggleBtn.click();
     } else {
+      _trace(`JC-TRACE: 3:no toggle [${fieldLabel}] → el.click()`);
       el.focus();
       el.click();
     }
@@ -575,6 +595,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
       await new Promise(r => setTimeout(r, 300));
       if (el.getAttribute('aria-expanded') === 'true') break;
     }
+    _trace(`JC-TRACE: 4:expanded [${fieldLabel}] → ${el.getAttribute('aria-expanded')}`);
 
     // Wait for options to render (they appear after dropdown opens)
     const _listbox = document.getElementById(el.id + '-listbox');
@@ -623,27 +644,35 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     }
 
     if (match) {
+      _trace(`JC-TRACE: 5:match found [${fieldLabel}] → "${match.textContent.trim()}" (id=${match.id})`);
+      const matchText = match.textContent.trim().toLowerCase();
       match.click();
       await new Promise(r => setTimeout(r, 300));
       // Oracle CX combobox: value is stored in toggle button text, not input value.
-      // Check both input value and toggle button text.
+      // Check input value, toggle button text, AND whether dropdown closed (aria-expanded=false).
       const toggle = document.getElementById(el.id + '-toggle-button');
       const toggleText = toggle?.textContent?.trim()?.toLowerCase() || '';
       const inputVal = el.value?.toLowerCase() || '';
+      const expanded = el.getAttribute('aria-expanded');
+      _trace(`JC-TRACE: 6:after click [${fieldLabel}] → input="${inputVal}" toggle="${toggleText}" expanded=${expanded}`);
+      // Confirmation: value set, OR toggle set, OR dropdown closed after click (Oracle accepted selection)
       if (inputVal === valueLower || toggleText === valueLower ||
-          toggleText.startsWith(valueLower) || valueLower.startsWith(toggleText)) {
+          toggleText.startsWith(valueLower) || valueLower.startsWith(toggleText) ||
+          (expanded === 'false' && matchText.includes(valueLower.substring(0, 3)))) {
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
-        console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy OK (toggle="${toggleText}") +${Date.now()-_t}ms`);
+        _trace(`JC-TRACE: 7:OK [${fieldLabel}] → DOM strategy confirmed +${Date.now()-_t}ms`);
         return true;
       }
-      console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: option clicked but value not confirmed (input="${inputVal}" toggle="${toggleText}")`);
+      _trace(`JC-TRACE: 7:FAIL [${fieldLabel}] → option clicked but value not confirmed`);
     } else {
+      _trace(`JC-TRACE: 5:no match [${fieldLabel}] → trying typeahead`);
       // No options found via toggle button — try typeahead approach.
       // Type a prefix of the value to trigger the dropdown, then find the match.
       const prefix = valueStr.substring(0, Math.min(5, valueStr.length));
       el.focus();
+      _trace(`JC-TRACE: 8:typeahead [${fieldLabel}] → typing prefix="${prefix}"`);
       el.value = '';
       el.dispatchEvent(new Event('input', { bubbles: true }));
       // Type each character individually — Oracle's autocomplete triggers on keyboard events
@@ -658,8 +687,10 @@ FormDetector.fillOracleCombobox = async function(el, value) {
       // Wait for typeahead options to load
       await new Promise(r => setTimeout(r, 2500));
       const listbox2 = document.getElementById(el.id + '-listbox');
+      _trace(`JC-TRACE: 9:typeahead listbox [${fieldLabel}] → ${listbox2 ? 'found' : 'not found'}, expanded=${el.getAttribute('aria-expanded')}`);
       if (listbox2) {
         const items2 = listbox2.querySelectorAll('[role="gridcell"], [role="option"], .cx-select__list-item');
+        _trace(`JC-TRACE: 10:typeahead items [${fieldLabel}] → ${items2.length} options`);
         match = Array.from(items2).find(o =>
           o.textContent.trim().toLowerCase() === valueLower
         );
@@ -670,30 +701,38 @@ FormDetector.fillOracleCombobox = async function(el, value) {
           );
         }
         if (match) {
+          _trace(`JC-TRACE: 11:typeahead match [${fieldLabel}] → "${match.textContent.trim()}"`);
+          const matchText2 = match.textContent.trim().toLowerCase();
           match.click();
-          await new Promise(r => setTimeout(r, 150));
+          await new Promise(r => setTimeout(r, 300));
           const toggle = document.getElementById(el.id + '-toggle-button');
           const toggleText = toggle?.textContent?.trim()?.toLowerCase() || '';
           const inputVal = el.value?.toLowerCase() || '';
-          if (inputVal === valueLower || toggleText === valueLower) {
+          const expanded2 = el.getAttribute('aria-expanded');
+          _trace(`JC-TRACE: 12:typeahead after click [${fieldLabel}] → input="${inputVal}" toggle="${toggleText}" expanded=${expanded2}`);
+          // Confirmation: value set, OR toggle set, OR dropdown closed after click
+          if (inputVal === valueLower || toggleText === valueLower ||
+              (expanded2 === 'false' && matchText2.includes(valueLower.substring(0, 3)))) {
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
             el.blur();
-            console.log(`JC: fillOracleCombobox [${fieldLabel}] → typeahead strategy OK +${Date.now()-_t}ms`);
+            _trace(`JC-TRACE: 13:typeahead OK [${fieldLabel}] +${Date.now()-_t}ms`);
             return true;
           }
+          _trace(`JC-TRACE: 13:typeahead FAIL [${fieldLabel}] → value not confirmed`);
         }
       }
       // Close dropdown if still open
       const closeBtn = document.getElementById(el.id + '-toggle-button');
       if (closeBtn && el.getAttribute('aria-expanded') === 'true') closeBtn.click();
     }
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy: no option found for "${valueStr}"`);
+    _trace(`JC-TRACE: 14:DOM fail [${fieldLabel}] → no option found for "${valueStr}"`);
   } catch(e) {
-    console.log(`JC: fillOracleCombobox [${fieldLabel}] → DOM strategy error: ${e.message}`);
+    _trace(`JC-TRACE: 14:DOM error [${fieldLabel}] → ${e.message}`);
   }
   
   // Strategy 2: Paste approach (InputEvent insertFromPaste)
+  _trace(`JC-TRACE: 15:paste attempt [${fieldLabel}]`);
   // NOTE: Paste sets el.value but may not update React/Knockout state.
   // For comboboxes, also verify toggle button text changed — if not,
   // the paste didn't really work and we fall through to char-by-char.
