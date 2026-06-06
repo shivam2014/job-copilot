@@ -1115,73 +1115,27 @@ async function fillEducation() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// fillSkills() — selects matching skill suggestions from resume
+// fillSkills() — types each skill as plain text and clicks "Add Skill"
 // ═══════════════════════════════════════════════════════════════
-// Oracle CX shows pre-populated skill suggestions as buttons with
-// aria-label="Add Skill X". This function reads skills from
-// resume_full_data, matches them against the suggestions (fuzzy),
-// and clicks the matching "Add Skill" buttons.
-//
-// For skills that don't match any suggestion, it clicks "Add More
-// Skills" and types the skill name into the search field.
-//
-// Works across ATS: Greenhouse and Lever have similar skill tag UIs.
+// Oracle CX skills flow is simple: click "Add More Skills", type the
+// skill name into the combobox, click "Add Skill". No typeahead, no
+// dropdown matching. This function iterates over all skills and
+// performs that flow for each one.
 async function fillSkills() {
   const skills = await getResumeSection('skills');
   if (!skills || skills.length === 0) return;
 
-  // Find all "Add Skill" suggestion buttons
-  const skillBtns = Array.from(document.querySelectorAll('button')).filter(b => {
-    const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-    return aria.includes('add skill') && b.offsetHeight > 0;
-  });
+  let added = 0;
+  for (const skill of skills.slice(0, 15)) {
+    const skillTrimmed = (skill || '').trim();
+    if (!skillTrimmed) continue;
 
-  let addedFromSuggestions = 0;
-  const unmatchedSkills = [];
-
-  for (const skill of skills) {
-    const skillLower = skill.toLowerCase().trim();
-    if (!skillLower) continue;
-
-    // Try to match against suggestion buttons (fuzzy: check if skill words appear in button text)
-    const match = skillBtns.find(b => {
-      const btnText = (b.getAttribute('aria-label') || b.textContent || '').toLowerCase();
-      const skillWords = skillLower.split(/[\s,]+/);
-      // Check if any significant word from the skill appears in the button text
-      return skillWords.some(w => w.length > 3 && btnText.includes(w)) ||
-             btnText.includes(skillLower);
-    });
-
-    if (match) {
-      // [FIX] Use real mouse events — Oracle's React ignores synthetic click()
-      const rect = match.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      const opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window, button: 0 };
-      match.dispatchEvent(new PointerEvent('pointerdown', opts));
-      match.dispatchEvent(new MouseEvent('mousedown', opts));
-      await new Promise(r => setTimeout(r, 50));
-      match.dispatchEvent(new PointerEvent('pointerup', opts));
-      match.dispatchEvent(new MouseEvent('mouseup', opts));
-      match.dispatchEvent(new MouseEvent('click', opts));
-      addedFromSuggestions++;
-      // Remove from available buttons so we don't click it again
-      const idx = skillBtns.indexOf(match);
-      if (idx >= 0) skillBtns.splice(idx, 1);
-      await new Promise(r => setTimeout(r, 500));
-    } else {
-      unmatchedSkills.push(skill);
-    }
-  }
-
-  // [FIX] For unmatched skills, use "Add More Skills" search form.
-  let addedCustom = 0;
-  for (const skill of unmatchedSkills.slice(0, 15)) {
+    // 1. Click "Add More Skills" to open the skill entry form
     const addMoreBtn = Array.from(document.querySelectorAll('button')).find(b =>
       (b.textContent || '').trim() === 'Add More Skills' && (b.id || '').includes('profileItemsAddButton')
     );
     if (!addMoreBtn) { console.log('JC: No "Add More Skills" button'); break; }
-    // [FIX] Real mouse events for Oracle React buttons
+    // Real mouse events for Oracle React buttons
     const r1 = addMoreBtn.getBoundingClientRect();
     const o1 = { bubbles: true, cancelable: true, clientX: r1.left + r1.width/2, clientY: r1.top + r1.height/2, view: window, button: 0 };
     addMoreBtn.dispatchEvent(new PointerEvent('pointerdown', o1));
@@ -1191,17 +1145,46 @@ async function fillSkills() {
     addMoreBtn.dispatchEvent(new MouseEvent('mouseup', o1));
     addMoreBtn.dispatchEvent(new MouseEvent('click', o1));
     await new Promise(r => setTimeout(r, 1500));
+
+    // 2. Find the skill combobox and fill with plain text (paste first, char-by-char fallback)
     const allSkillCombos = document.querySelectorAll('[name="skills"][role="combobox"]');
     const skillCombo = allSkillCombos.length > 0 ? allSkillCombos[allSkillCombos.length - 1] : null;
     if (!skillCombo) { console.log('JC: No skill combobox found'); break; }
-    const field = { el: skillCombo, name: 'skill', label: 'Skill' };
-    await FormDetector.fillField(field, skill);
-    await new Promise(r => setTimeout(r, 500));
+
+    // Strategy A: paste
+    skillCombo.focus();
+    skillCombo.value = '';
+    skillCombo.dispatchEvent(new Event('input', { bubbles: true }));
+    skillCombo.value = skillTrimmed;
+    skillCombo.dispatchEvent(new InputEvent('input', {
+      inputType: 'insertFromPaste',
+      data: skillTrimmed,
+      bubbles: true,
+      cancelable: true,
+    }));
+    skillCombo.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 200));
+
+    // Strategy B: char-by-char fallback if paste didn't stick
+    if (skillCombo.value !== skillTrimmed) {
+      skillCombo.focus();
+      skillCombo.value = '';
+      skillCombo.dispatchEvent(new Event('input', { bubbles: true }));
+      for (let i = 0; i < skillTrimmed.length; i++) {
+        skillCombo.value = skillTrimmed.substring(0, i + 1);
+        skillCombo.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 20));
+      }
+      skillCombo.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    // 3. Click the "Add Skill" button (not the "Add More Skills" one)
     const submitBtn = Array.from(document.querySelectorAll('button')).find(b =>
       (b.textContent || '').trim() === 'Add Skill' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
     );
     if (submitBtn) {
-      // [FIX] Real mouse events for Oracle React buttons
+      // Real mouse events for Oracle React buttons
       const r2 = submitBtn.getBoundingClientRect();
       const o2 = { bubbles: true, cancelable: true, clientX: r2.left + r2.width/2, clientY: r2.top + r2.height/2, view: window, button: 0 };
       submitBtn.dispatchEvent(new PointerEvent('pointerdown', o2));
@@ -1210,18 +1193,16 @@ async function fillSkills() {
       submitBtn.dispatchEvent(new PointerEvent('pointerup', o2));
       submitBtn.dispatchEvent(new MouseEvent('mouseup', o2));
       submitBtn.dispatchEvent(new MouseEvent('click', o2));
-      await new Promise(r => setTimeout(r, 800)); addedCustom++;
-    }
-    else {
-      const cancel = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim() === 'Cancel');
-      if (cancel) cancel.click();
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 800));
+      added++;
+    } else {
+      console.log('JC: No "Add Skill" button found for \"' + skillTrimmed + '\"');
     }
   }
-  const total = addedFromSuggestions + addedCustom;
-  if (total > 0) {
-    showStatus('Added ' + total + ' skill(s)', 'success');
-    console.log('JC: Added ' + addedFromSuggestions + ' from suggestions, ' + addedCustom + ' custom');
+
+  if (added > 0) {
+    showStatus('Added ' + added + ' skill(s)', 'success');
+    console.log('JC: Added ' + added + ' skill(s)');
   }
 }
 
