@@ -416,9 +416,10 @@ const FormDetector = {
   // The value we have (e.g., "Poland") might not exactly match the option
   // text (e.g., "Poland" vs "Poland (+48)"). So we try four strategies:
   //   Phase 1: exact text match
-  //   Phase 2: starts-with match
-  //   Phase 3: word-boundary regex match
-  //   Phase 4: substring match
+  //   Phase 2: word-boundary regex match
+  //   Phase 3: starts-with match
+  // NOTE: No substring/includes match — causes false positives like
+  //       "GUI" matching "Strategic Guidance".
   fillSelect(el, value) {
     const options = Array.from(el.options).filter(o => o.value !== '');
     const lowerValue = value.toLowerCase().trim();
@@ -429,26 +430,18 @@ const FormDetector = {
       o.value.toLowerCase().trim() === lowerValue
     );
     
-    // Phase 2: starts with
+    // Phase 2: word-boundary regex
+    if (!match) {
+      const wordRegex = new RegExp('\\b' + lowerValue.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\b', 'i');
+      match = options.find(o => wordRegex.test(o.text) || wordRegex.test(o.value));
+    }
+    
+    // Phase 3: starts with
     if (!match) {
       match = options.find(o =>
         o.text.toLowerCase().trim().startsWith(lowerValue) ||
         o.value.toLowerCase().trim().startsWith(lowerValue) ||
         lowerValue.startsWith(o.text.toLowerCase().trim())
-      );
-    }
-    
-    // Phase 3: word-boundary
-    if (!match) {
-      const wordRegex = new RegExp('\\b' + lowerValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-      match = options.find(o => wordRegex.test(o.text) || wordRegex.test(o.value));
-    }
-    
-    // Phase 4: includes
-    if (!match) {
-      match = options.find(o =>
-        o.text.toLowerCase().includes(lowerValue) ||
-        o.value.toLowerCase().includes(lowerValue)
       );
     }
     

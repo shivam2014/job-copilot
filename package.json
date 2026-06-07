@@ -4,7 +4,7 @@
   "description": "AI-powered job application autofiller. Bring your own LLM endpoint.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run"
   },
   "repository": {
     "type": "git",
@@ -23,7 +23,9 @@
     "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
+    "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
+    "vitest": "^4.1.8",
     "ws": "^8.21.0"
   }
 }
