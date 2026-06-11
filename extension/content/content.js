@@ -190,8 +190,13 @@ function attachGlobalLearning() {
 
     const fieldName = field.name || el.name || el.id;
     el.addEventListener('blur', function onUserEdit() {
-      // Skip if JC filled this field — listenForCorrections handles that path
-      if (el.dataset.jcFilled === 'true') return;
+      // Was filled by extension — only learn if user edited the value
+      if (el.dataset.jcFilled === 'true') {
+        if (el.value !== el.dataset.jcOriginal) {
+          saveLearnedCorrection(fieldName, el.value);
+        }
+        return;
+      }
       const val = el.value?.trim();
       if (val && fieldName) {
         saveLearnedCorrection(fieldName, val);

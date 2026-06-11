@@ -540,6 +540,7 @@ const FormDetector = {
         await new Promise(r => setTimeout(r, 200));
         if (el.value === value) {
           console.log(`JC: fillField [${fieldLabel}] → paste OK`);
+          el.dataset.jcOriginal = value;
           return true;
         }
         console.log(`JC: fillField [${fieldLabel}] → paste: value didn't stick, falling back to char-by-char`);
@@ -561,6 +562,7 @@ const FormDetector = {
         el.blur();
         if (el.value === value) {
           console.log(`JC: fillField [${fieldLabel}] → char-by-char fallback OK`);
+          el.dataset.jcOriginal = value;
           return true;
         }
       } catch(e) {
@@ -588,6 +590,7 @@ const FormDetector = {
       await new Promise(r => setTimeout(r, 50));
       if (el.value === value) {
         console.log(`JC: fillField [${fieldLabel}] → direct assignment OK`);
+        el.dataset.jcOriginal = value;
         return true;
       }
       console.log(`JC: fillField [${fieldLabel}] → direct assignment failed (value='${el.value}'), trying native setter`);
@@ -611,6 +614,7 @@ const FormDetector = {
       await new Promise(r => setTimeout(r, 50));
       if (el.value === value) {
         console.log(`JC: fillField [${fieldLabel}] → native setter OK`);
+        el.dataset.jcOriginal = value;
         return true;
       }
       console.log(`JC: fillField [${fieldLabel}] → native setter failed (value='${el.value}')`);
@@ -758,6 +762,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
         _trace(`JC-TRACE: 7:OK [${fieldLabel}] → DOM strategy confirmed +${Date.now()-_t}ms`);
+        el.dataset.jcOriginal = value;
         return true;
       }
       _trace(`JC-TRACE: 7:FAIL [${fieldLabel}] → option clicked but value not confirmed`);
@@ -818,6 +823,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
             el.dispatchEvent(new Event('change', { bubbles: true }));
             el.blur();
             _trace(`JC-TRACE: 13:typeahead OK [${fieldLabel}] +${Date.now()-_t}ms`);
+            el.dataset.jcOriginal = value;
             return true;
           }
           _trace(`JC-TRACE: 13:typeahead FAIL [${fieldLabel}] → value not confirmed`);
@@ -863,6 +869,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     if (inputVal === valLower || (toggleText && (toggleText === valLower ||
          toggleText.startsWith(valLower) || valLower.startsWith(toggleText)))) {
       console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste OK (toggle="${toggleText}")`);
+      el.dataset.jcOriginal = value;
       return true;
     }
     console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste: input="${inputVal}" toggle="${toggleText}" — not confirmed, falling through`);
@@ -888,6 +895,7 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     await new Promise(r => setTimeout(r, 200));
     if (el.value === valueStr) {
       console.log(`JC: fillOracleCombobox [${fieldLabel}] → char-by-char OK`);
+      el.dataset.jcOriginal = value;
       return true;
     }
   } catch(e) {
