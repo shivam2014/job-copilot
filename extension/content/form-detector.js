@@ -104,16 +104,21 @@ const FormDetector = {
     address: ['address'],
     street_address: [
       'street', 'streetaddress', 'street_address', 'street address',
-      'address-line1',
+      'address-line1', 'address line 1', 'addressline1',
     ],
     street_address2: [
-      'address-line2', 'addressline2',
+      'address-line2', 'addressline2', 'address line 2',
+    ],
+    apt_number: [
+      'apt', 'apt.', 'apt number', 'apt_number', 'apt-number',
+      'apartment', 'apartment number', 'suite', 'unit',
+      'address line 3', 'addressline3',
     ],
     city: [
       'city', 'town', 'address-level2',
     ],
     state: [
-      'state', 'province', 'region', 'address-level1',
+      'state', 'province', 'region', 'region1', 'region2', 'address-level1',
     ],
     postal_code: [
       'postal', 'postalcode', 'postal-code', 'postal code',
@@ -148,6 +153,24 @@ const FormDetector = {
     hispanic: [
       'hispanic', 'latino', 'hispaniclatino',
     ],
+    employer_name: [
+      'employername', 'employer-name', 'employer_name', 'employer name',
+      'companyname', 'company-name', 'company_name', 'company name',
+      'organization', 'organisation',
+    ],
+    company_name: [
+      'companyname', 'company-name', 'company_name', 'company name',
+    ],
+    start_month: ['startmonth', 'start-month', 'start_month', 'start month', 'monthstart', 'month-start', 'month-startdate'],
+    start_year: ['startyear', 'start-year', 'start_year', 'start year', 'yearstart', 'year-start', 'year-startdate'],
+    end_month: ['endmonth', 'end-month', 'end_month', 'end month', 'monthend', 'month-end', 'month-enddate'],
+    end_year: ['endyear', 'end-year', 'end_year', 'end year', 'yearend', 'year-end', 'year-enddate'],
+    job_title: ['jobtitle', 'job-title', 'job_title', 'job title', 'title', 'position'],
+    responsibilities: ['responsibilities', 'responsibility', 'description', 'job description', 'work description', 'role description', 'summary'],
+    month_start_date: ['month-startdate', 'month-start-date', 'month_start_date', 'month start date', 'startdatemonth', 'start-date-month'],
+    year_start_date: ['year-startdate', 'year-start-date', 'year_start_date', 'year start date', 'startdateyear', 'start-date-year'],
+    month_end_date: ['month-enddate', 'month-end-date', 'month_end_date', 'month end date', 'enddatemonth', 'end-date-month'],
+    year_end_date: ['year-enddate', 'year-end-date', 'year_end_date', 'year end date', 'enddateyear', 'end-date-year'],
   },
 
   // Field types that map to profile values
@@ -173,8 +196,6 @@ const FormDetector = {
     inputs.forEach(el => {
       const field = this.identify(el);
       if (!field) return;
-
-      if (field.name === 'unknown' && !field.isRequired) return;
 
       if (el instanceof HTMLTextAreaElement) {
         // Check if it's a known personal field or custom question
@@ -348,6 +369,26 @@ const FormDetector = {
       bestScore = 30;
     }
 
+    // (d) Prefer street_address over generic address when label/autocomplete
+    //     clearly indicates address line 1. Generic "address" pattern scores
+    //     higher because it matches on more sources (label, autocomplete, name)
+    //     but "Address Line 1" label + "address-line1" autocomplete should map
+    //     to street_address, not the generic address category.
+    if (fieldName === 'address') {
+      const addrLine1Pattern = /\b(address[-\s]?line[-\s]?1|addressline1)\b/i;
+      if (addrLine1Pattern.test(autocomplete) || addrLine1Pattern.test(labelText)) {
+        fieldName = 'street_address';
+      }
+      const addrLine2Pattern = /\b(address[-\s]?line[-\s]?2|addressline2)\b/i;
+      if (addrLine2Pattern.test(autocomplete) || addrLine2Pattern.test(labelText)) {
+        fieldName = 'street_address2';
+      }
+      const addrLine3Pattern = /\b(address[-\s]?line[-\s]?3|addressline3)\b/i;
+      if (addrLine3Pattern.test(autocomplete) || addrLine3Pattern.test(labelText)) {
+        fieldName = 'apt_number';
+      }
+    }
+
     return {
       el: el,
       name: fieldName,
@@ -362,7 +403,7 @@ const FormDetector = {
     return ['name', 'first_name', 'last_name', 'middle_name', 'full_name',
             'email', 'phone', 'phone_country_code',
             'linkedin', 'github', 'website',
-            'address', 'street_address', 'street_address2', 'city', 'state', 'postal_code', 'country',
+            'address', 'street_address', 'street_address2', 'apt_number', 'city', 'state', 'postal_code', 'country',
             'resume', 'cover_letter', 'work_authorization',
             'gender', 'veteran', 'disability', 'race', 'hispanic'].includes(name);
   },
@@ -525,6 +566,56 @@ const FormDetector = {
       } catch(e) {
         console.log(`JC: fillField [${fieldLabel}] → char-by-char fallback error: ${e.message}`);
       }
+      
+      console.log(`JC: fillField [${fieldLabel}] → Oracle strategies failed`);
+      return false;
+    }
+    
+    // ── Non-Oracle strategies ────────────────────────────────
+    // For plain inputs (Workday, Greenhouse, Lever, generic forms):
+    //   Strategy 1: Direct DOM assignment + input/change events
+    //   Strategy 2: Native prototype setter (bypasses framework interceptors)
+    //
+    console.log(`JC: fillField [${fieldLabel}] → non-Oracle, trying direct assignment`);
+    
+    // Strategy 1: Direct DOM assignment
+    try {
+      el.focus();
+      el.value = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      await new Promise(r => setTimeout(r, 50));
+      if (el.value === value) {
+        console.log(`JC: fillField [${fieldLabel}] → direct assignment OK`);
+        return true;
+      }
+      console.log(`JC: fillField [${fieldLabel}] → direct assignment failed (value='${el.value}'), trying native setter`);
+    } catch(e) {
+      console.log(`JC: fillField [${fieldLabel}] → direct assignment error: ${e.message}`);
+    }
+    
+    // Strategy 2: Native prototype setter
+    // Frameworks like React/Vue/Angular override the value property setter.
+    // Using the original HTMLInputElement.prototype.value setter bypasses them.
+    try {
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+        'value'
+      ).set;
+      el.focus();
+      nativeSetter.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      await new Promise(r => setTimeout(r, 50));
+      if (el.value === value) {
+        console.log(`JC: fillField [${fieldLabel}] → native setter OK`);
+        return true;
+      }
+      console.log(`JC: fillField [${fieldLabel}] → native setter failed (value='${el.value}')`);
+    } catch(e) {
+      console.log(`JC: fillField [${fieldLabel}] → native setter error: ${e.message}`);
     }
     
     console.log(`JC: fillField [${fieldLabel}] → ALL strategies failed`);
@@ -767,8 +858,10 @@ FormDetector.fillOracleCombobox = async function(el, value) {
     const inputVal = el.value?.toLowerCase() || '';
     const valLower = valueStr.toLowerCase();
     // Paste only truly worked if toggle OR input has the value
-    if ((inputVal === valLower || toggleText === valLower ||
-         toggleText.startsWith(valLower) || valLower.startsWith(toggleText)) && toggleText) {
+    // [FIX] Remove `&& toggleText` guard — some comboboxes (postalCode, region2)
+    // have toggle buttons with empty text. Check input value directly instead.
+    if (inputVal === valLower || (toggleText && (toggleText === valLower ||
+         toggleText.startsWith(valLower) || valLower.startsWith(toggleText)))) {
       console.log(`JC: fillOracleCombobox [${fieldLabel}] → paste OK (toggle="${toggleText}")`);
       return true;
     }
@@ -811,6 +904,14 @@ FormDetector.isOracleCombobox = function(el) {
   return el.getAttribute('role') === 'combobox' ||
          !!el.closest('.cx-select') ||
          !!el.closest('.cx-select-container') ||
+         el.classList.contains('cx-select-input');
+};
+
+FormDetector.isOracleCXField = function(el) {
+  return el.getAttribute('role') === 'combobox' ||
+         !!el.closest('.cx-select') ||
+         !!el.closest('.cx-select-container') ||
+         !!el.closest('.oj-combobox') ||
          el.classList.contains('cx-select-input');
 };
 

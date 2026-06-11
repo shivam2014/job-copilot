@@ -1,4 +1,5 @@
 
+// build: 1781211550
 // ═══════════════════════════════════════════════════════════════
 // Inject CSS programmatically — more reliable than manifest CSS
 // ═══════════════════════════════════════════════════════════════
@@ -119,7 +120,13 @@ function setFilling(val) {
 // This ensures learnings from Oracle CX work on Workday, Greenhouse, etc.
 const fieldCategoryMap = {
   // Address
+  'address': 'street_address',
+  'region1': 'state',
+  'addressline1': 'street_address',
+  'addressline2': 'street_address_2',
+  'addressline3': 'apt_number',
   'addressLine1': 'street_address', 'addressLine2': 'street_address_2',
+  'street_address2': 'street_address_2',
   'addressLine3': 'street_address_3', 'streetAddress': 'street_address',
   'address1': 'street_address', 'address_1': 'street_address',
   'address_line_1': 'street_address', 'street': 'street_address',
@@ -151,6 +158,15 @@ const fieldCategoryMap = {
   // Links
   'linkedin': 'linkedin', 'siteLink-1': 'linkedin',
   'github': 'github', 'website': 'website',
+  // Employer / Experience
+  'employerName': 'employer_name',
+  'companyName': 'company_name',
+  'jobTitle': 'job_title',
+  'startDate-month': 'start_month',
+  'startDate-year': 'start_year',
+  'endDate-month': 'end_month',
+  'endDate-year': 'end_year',
+  'responsibilities': 'responsibilities',
 };
 
 // Get the generic category for a field name
@@ -165,7 +181,7 @@ function getFieldCategory(fieldName) {
 const _learnedEls = new WeakSet();
 function attachGlobalLearning() {
   const fields = FormDetector.detect();
-  const allFields = [...fields.personal, ...fields.questions, ...fields.selects];
+  const allFields = [...fields.personal, ...fields.questions, ...fields.selects, ...fields.unknown];
   for (const field of allFields) {
     const el = field.el;
     if (!el || _learnedEls.has(el)) continue;
@@ -174,6 +190,8 @@ function attachGlobalLearning() {
 
     const fieldName = field.name || el.name || el.id;
     el.addEventListener('blur', function onUserEdit() {
+      // Skip if JC filled this field — listenForCorrections handles that path
+      if (el.dataset.jcFilled === 'true') return;
       const val = el.value?.trim();
       if (val && fieldName) {
         saveLearnedCorrection(fieldName, val);
@@ -194,7 +212,7 @@ document.addEventListener('click', function(e) {
   var t = e.target.closest('button, a') || e.target;
   if (t.tagName === 'BUTTON' || t.tagName === 'A') {
     var txt = (t.textContent || '').toLowerCase();
-    if (txt.includes('apply') || txt.includes('next') || txt.includes('continue')) {
+    if (txt.includes('apply') || txt.includes('next') || txt.includes('continue') || txt.includes('add experience')) {
       setTimeout(function() {
         var fields = FormDetector.detect();
         var total = fields.personal.length + fields.questions.length + fields.selects.length;
@@ -311,6 +329,7 @@ function createPanel() {
     await fillEducation();
     await fillSkills();
     await fillLanguages();
+    await fillLicenses();
     await fillAIQuestions();
     await fillApplicationQuestions();
     await fillLearnedRadios();
@@ -370,7 +389,7 @@ function injectPerFieldButtons() {
   document.querySelectorAll('.jc-field-fill-btn').forEach(b => b.remove());
 
   const fields = FormDetector.detect();
-  const allFields = [...fields.personal, ...fields.questions, ...fields.selects];
+  const allFields = [...fields.personal, ...fields.questions, ...fields.selects, ...fields.unknown];
 
   for (const field of allFields) {
     if (field.el.type === 'file') continue;
@@ -555,13 +574,44 @@ async function fillPersonal() {
   // names that FormDetector.identify() returns (first_name, email, etc.)
   let filled = 0;
   const filledEls = [];
-  for (const field of [...fields.personal, ...fields.selects]) {
+  const allFields = [...fields.personal, ...fields.selects]
+    .filter(f => f.name !== 'employer_name' && f.name !== 'company_name');
+  // Sort: text inputs first, then comboboxes, then selects last
+  // Prevents country/state combobox re-render from invalidating text field refs
+  allFields.sort((a, b) => {
+    const isText = (el) => el.type === 'text' || el.type === 'email' || el.type === 'tel' || el.type === 'url' || el.type === 'number';
+    const isSelect = (el) => el instanceof HTMLSelectElement;
+    const aText = isText(a.el) ? 0 : (isSelect(a.el) ? 2 : 1);
+    const bText = isText(b.el) ? 0 : (isSelect(b.el) ? 2 : 1);
+    return aText - bText;
+  });
+  for (const field of allFields) {
     const category = getFieldCategory(field.name);
     const value = fillMap[field.name] || fillMap[category]; // Step 5: lookup by field identity + category
     if (value && !skipFieldForType(field, value)) {
       const ok = await FormDetector.fillField(field, value);
       if (ok) { filled++; filledEls.push(field.el); }
     }
+  }
+
+  // Re-detect after Oracle combobox fills may have triggered re-render
+  // Country/state combobox fills cause Oracle to recreate address fields
+  try {
+    const recheck = FormDetector.detect();
+    const recheckFields = [...recheck.personal, ...recheck.selects]
+      .filter(f => f.name !== 'employer_name' && f.name !== 'company_name');
+    for (const field of recheckFields) {
+      // Skip if already has value
+      if (field.el.value && field.el.value.trim().length > 0) continue;
+      const category = getFieldCategory(field.name);
+      const value = fillMap[field.name] || fillMap[category];
+      if (value && !skipFieldForType(field, value)) {
+        const ok = await FormDetector.fillField(field, value);
+        if (ok) { filled++; filledEls.push(field.el); }
+      }
+    }
+  } catch (e) {
+    console.log('JC: Re-detect pass failed:', e.message);
   }
 
   if (filledEls.length > 0) listenForCorrections(filledEls);
@@ -811,6 +861,9 @@ async function fillExperience() {
     }
     if (empName && exp.company) await fillExpField(empName, exp.company, "employerName");
 
+    // Inject F buttons on newly-rendered experience form fields
+    injectPerFieldButtons();
+
     // Job Title
     const allJobTitles = document.querySelectorAll('input[name="jobTitle"]');
     const jobTitle = allJobTitles.length > 0 ? allJobTitles[allJobTitles.length - 1] : null;
@@ -824,14 +877,14 @@ async function fillExperience() {
       const monthName = MONTH_MAP[monthNum] || monthNum;
 
       // Try to fill month combobox — find the LAST one (most recently added entry)
-      const allStartMonths = document.querySelectorAll('[id*="month-startDate"]');
+      const allStartMonths = document.querySelectorAll('input[id*="month-startDate"]');
       const startMonth = allStartMonths.length > 0 ? allStartMonths[allStartMonths.length - 1] : null;
       if (startMonth && monthName) {
         const field = { el: startMonth, name: 'startDate', label: 'Start Month' };
         await FormDetector.fillField(field, monthName);
       }
 
-      const allStartYears = document.querySelectorAll('[id*="year-startDate"]');
+      const allStartYears = document.querySelectorAll('input[id*="year-startDate"]');
       const startYear = allStartYears.length > 0 ? allStartYears[allStartYears.length - 1] : null;
       if (startYear && yearStr) {
         const field = { el: startYear, name: 'startDate', label: 'Start Year' };
@@ -846,14 +899,14 @@ async function fillExperience() {
       const yearStr = parts[1] || '';
       const monthName = MONTH_MAP[monthNum] || monthNum;
 
-      const allEndMonths = document.querySelectorAll('[id*="month-endDate"]');
+      const allEndMonths = document.querySelectorAll('input[id*="month-endDate"]');
       const endMonth = allEndMonths.length > 0 ? allEndMonths[allEndMonths.length - 1] : null;
       if (endMonth && monthName) {
         const field = { el: endMonth, name: 'endDate', label: 'End Month' };
         await FormDetector.fillField(field, monthName);
       }
 
-      const allEndYears = document.querySelectorAll('[id*="year-endDate"]');
+      const allEndYears = document.querySelectorAll('input[id*="year-endDate"]');
       const endYear = allEndYears.length > 0 ? allEndYears[allEndYears.length - 1] : null;
       if (endYear && yearStr) {
         const field = { el: endYear, name: 'endDate', label: 'End Year' };
@@ -862,7 +915,7 @@ async function fillExperience() {
     }
 
     // Fill Employer Country — use char-by-char
-    const allCountries = document.querySelectorAll('[id*="countryCode"]');
+    const allCountries = document.querySelectorAll('input[id*="countryCode"]');
     const empCountry = allCountries.length > 0 ? allCountries[allCountries.length - 1] : null;
     if (empCountry) {
       const cityCountryMap = {
@@ -1055,14 +1108,14 @@ async function fillEducation() {
       const yearStr = parts[1] || '';
       const monthName = MONTH_MAP[monthNum] || monthNum;
 
-      const allStartMonths = document.querySelectorAll('[id*="month-startDate"]');
+      const allStartMonths = document.querySelectorAll('input[id*="month-startDate"]');
       const startMonth = allStartMonths.length > 0 ? allStartMonths[allStartMonths.length - 1] : null;
       if (startMonth && monthName) {
         const field = { el: startMonth, name: 'startDate', label: 'Start Month' };
         await FormDetector.fillField(field, monthName);
       }
 
-      const allStartYears = document.querySelectorAll('[id*="year-startDate"]');
+      const allStartYears = document.querySelectorAll('input[id*="year-startDate"]');
       const startYear = allStartYears.length > 0 ? allStartYears[allStartYears.length - 1] : null;
       if (startYear && yearStr) {
         const field = { el: startYear, name: 'startDate', label: 'Start Year' };
@@ -1077,14 +1130,14 @@ async function fillEducation() {
       const yearStr = parts[1] || '';
       const monthName = MONTH_MAP[monthNum] || monthNum;
 
-      const allEndMonths = document.querySelectorAll('[id*="month-endDate"]');
+      const allEndMonths = document.querySelectorAll('input[id*="month-endDate"]');
       const endMonth = allEndMonths.length > 0 ? allEndMonths[allEndMonths.length - 1] : null;
       if (endMonth && monthName) {
         const field = { el: endMonth, name: 'endDate', label: 'End Month' };
         await FormDetector.fillField(field, monthName);
       }
 
-      const allEndYears = document.querySelectorAll('[id*="year-endDate"]');
+      const allEndYears = document.querySelectorAll('input[id*="year-endDate"]');
       const endYear = allEndYears.length > 0 ? allEndYears[allEndYears.length - 1] : null;
       if (endYear && yearStr) {
         const field = { el: endYear, name: 'endDate', label: 'End Year' };
@@ -1135,16 +1188,23 @@ async function fillSkills() {
       (b.textContent || '').trim() === 'Add More Skills' && (b.id || '').includes('profileItemsAddButton')
     );
     if (!addMoreBtn) { console.log('JC: No "Add More Skills" button'); break; }
-    // Real mouse events for Oracle React buttons
-    const r1 = addMoreBtn.getBoundingClientRect();
-    const o1 = { bubbles: true, cancelable: true, clientX: r1.left + r1.width/2, clientY: r1.top + r1.height/2, view: window, button: 0 };
-    addMoreBtn.dispatchEvent(new PointerEvent('pointerdown', o1));
-    addMoreBtn.dispatchEvent(new MouseEvent('mousedown', o1));
-    await new Promise(r => setTimeout(r, 50));
-    addMoreBtn.dispatchEvent(new PointerEvent('pointerup', o1));
-    addMoreBtn.dispatchEvent(new MouseEvent('mouseup', o1));
-    addMoreBtn.dispatchEvent(new MouseEvent('click', o1));
-    await new Promise(r => setTimeout(r, 1500));
+    // Only click if visible — after first skill added, button goes hidden (height:0)
+    // and events on zero-height elements are no-ops, so skip click if already open
+    if (addMoreBtn.offsetHeight > 0 && addMoreBtn.offsetParent !== null) {
+      // Real mouse events for Oracle React buttons
+      const r1 = addMoreBtn.getBoundingClientRect();
+      const o1 = { bubbles: true, cancelable: true, clientX: r1.left + r1.width/2, clientY: r1.top + r1.height/2, view: window, button: 0 };
+      addMoreBtn.dispatchEvent(new PointerEvent('pointerdown', o1));
+      addMoreBtn.dispatchEvent(new MouseEvent('mousedown', o1));
+      await new Promise(r => setTimeout(r, 50));
+      addMoreBtn.dispatchEvent(new PointerEvent('pointerup', o1));
+      addMoreBtn.dispatchEvent(new MouseEvent('mouseup', o1));
+      addMoreBtn.dispatchEvent(new MouseEvent('click', o1));
+      await new Promise(r => setTimeout(r, 1500));
+    } else {
+      console.log('JC: Add More Skills button hidden — skill entry already open');
+      await new Promise(r => setTimeout(r, 300));
+    }
 
     // 2. Find the skill combobox and fill with plain text (paste first, char-by-char fallback)
     const allSkillCombos = document.querySelectorAll('[name="skills"][role="combobox"]');
@@ -1375,6 +1435,86 @@ async function fillLanguages() {
   if (filled > 0) { showStatus('Added ' + filled + ' language(s)', 'success'); }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// fillLicenses() — adds license/certification entries
+// ═══════════════════════════════════════════════════════════════
+// Oracle CX licenses flow: click "Add License", type license name
+// into combobox, optionally fill issuer/date, click submit.
+// Checks both 'licenses' and 'certifications' sections from resume.
+async function fillLicenses() {
+  const resumeData = await chrome.storage.sync.get('resume_full_data');
+  if (!resumeData.resume_full_data) return;
+  let parsed;
+  try { parsed = JSON.parse(resumeData.resume_full_data); } catch { return; }
+
+  const licenses = parsed.rawSections?.licenses || parsed.rawSections?.certifications || [];
+  if (!licenses || licenses.length === 0) { console.log('JC: No licenses/certifications in resume'); return; }
+  console.log('JC: fillLicenses — ' + licenses.length + ' entries found');
+
+  let filled = 0;
+  for (const lic of licenses) {
+    const licName = typeof lic === 'string' ? lic : (lic.name || lic.title || '');
+    if (!licName) continue;
+
+    // 1. Click "Add License" to open the entry form
+    const addBtn = Array.from(document.querySelectorAll('button')).find(b =>
+      (b.textContent || '').trim() === 'Add License' && (b.id || '').includes('profileItemsAddButton')
+    );
+    if (!addBtn) { console.log('JC: No "Add License" trigger found'); break; }
+    const rect = addBtn.getBoundingClientRect();
+    const opts = { bubbles: true, cancelable: true, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, view: window, button: 0 };
+    addBtn.dispatchEvent(new PointerEvent('pointerdown', opts));
+    addBtn.dispatchEvent(new MouseEvent('mousedown', opts));
+    await new Promise(r => setTimeout(r, 50));
+    addBtn.dispatchEvent(new PointerEvent('pointerup', opts));
+    addBtn.dispatchEvent(new MouseEvent('mouseup', opts));
+    addBtn.dispatchEvent(new MouseEvent('click', opts));
+    await new Promise(r => setTimeout(r, 1500));
+
+    // 2. Find the license name combobox (last visible one)
+    const allCombos = document.querySelectorAll('[role="combobox"]');
+    const licCombo = allCombos.length > 0 ? allCombos[allCombos.length - 1] : null;
+    if (licCombo) {
+      const field = { el: licCombo, name: 'license', label: 'License' };
+      await FormDetector.fillField(field, licName);
+    }
+
+    // 3. Optionally fill issuing organization if data has it
+    const issuer = typeof lic === 'object' ? (lic.issuer || lic.organization || '') : '';
+    if (issuer) {
+      const issuerField = Array.from(document.querySelectorAll('input, [role="combobox"]')).find(el => {
+        const label = (el.closest('[class*=field]') || el.parentElement)?.querySelector('label');
+        return label && /issuer|organization|authority/i.test(label.textContent);
+      });
+      if (issuerField) {
+        const field = { el: issuerField, name: 'issuer', label: 'Issuer' };
+        await FormDetector.fillField(field, issuer);
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+
+    // 4. Click submit button
+    const submitBtn = Array.from(document.querySelectorAll('button')).find(b =>
+      (b.textContent || '').trim() === 'Add License' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
+    );
+    if (submitBtn) {
+      const rs = submitBtn.getBoundingClientRect();
+      const os = { bubbles: true, cancelable: true, clientX: rs.left + rs.width / 2, clientY: rs.top + rs.height / 2, view: window, button: 0 };
+      submitBtn.dispatchEvent(new PointerEvent('pointerdown', os));
+      submitBtn.dispatchEvent(new MouseEvent('mousedown', os));
+      await new Promise(r => setTimeout(r, 50));
+      submitBtn.dispatchEvent(new PointerEvent('pointerup', os));
+      submitBtn.dispatchEvent(new MouseEvent('mouseup', os));
+      submitBtn.dispatchEvent(new MouseEvent('click', os));
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    filled++;
+  }
+
+  if (filled > 0) { showStatus('Added ' + filled + ' license(s)/certification(s)', 'success'); }
+}
+
 // ── Shared Helpers ─────────────────────────────────────────────────
 
 // Step 4: build a value dictionary from your stored profile data.
@@ -1400,12 +1540,18 @@ async function buildFillMap() {
   const addrParts = address ? address.split(',').map(s => s.trim()).filter(Boolean) : [];
   const hasMultiPartAddr = addrParts.length >= 3;
   const parseAddr = hasMultiPartAddr ? addrParts[0] : '';
+  const parseAddr2 = hasMultiPartAddr ? (addrParts.length >= 4 ? addrParts[1] : '') : '';
   const parseCity = hasMultiPartAddr ? addrParts[addrParts.length - 2] : (addrParts.length === 2 ? addrParts[0] : '');
-  const parseCountry = addrParts.length > 0 ? addrParts[addrParts.length - 1] : '';
-
+  // Last part might be country, postal code, or something else
   // Cache: parse resume_full_data once for extractedFields fallbacks
   let extracted = {};
   try { extracted = JSON.parse(profile.resume_full_data || '{}').extractedFields || {}; } catch {}
+
+  const lastPart = addrParts.length > 0 ? addrParts[addrParts.length - 1] : '';
+  // If last part looks like a postal code (digits+hyphen) or isn't a known country, don't use as country
+  const isPostalCode = /^\d[\d\s-]*$/.test(lastPart);
+  const knownCountries = /^(usa|uk|france|germany|spain|italy|poland|canada|australia|india|china|japan|brazil|mexico|netherlands|switzerland|sweden|norway|denmark|finland|belgium|austria|ireland|portugal|new zealand|singapore|malaysia|united states|united kingdom|united arab emirates|uae|south korea|south africa|turkey|israel|egypt|nigeria|kenya|thailand|vietnam|indonesia|philippines|argentina|chile|colombia|peru|czech republic|czechia|hungary|romania|ukraine|russia|saudi arabia|qatar|oman|kuwait|bahrain|luxembourg|monaco|liechtenstein|andorra|malta|iceland|estonia|latvia|lithuania|slovakia|slovenia|croatia|bulgaria|serbia|bosnia|albania|macedonia|montenegro|belarus|moldova|georgia|armenia|azerbaijan|kazakhstan|uzbekistan|turkmenistan|kyrgyzstan|tajikistan|afghanistan|pakistan|bangladesh|sri lanka|nepal|bhutan|maldives|myanmar|laos|cambodia|mongolia|taiwan|hong kong|macau|poland)$/i;
+  const parseCountry = !isPostalCode && knownCountries.test(lastPart) ? lastPart : (extracted.country || '');
 
   return {
     name: nameStr,
@@ -1434,9 +1580,14 @@ async function buildFillMap() {
     website: profile.profile_website || profile.profile_linkedin || '',
     address: hasMultiPartAddr ? '' : address,
     street_address: parseAddr,
+    street_address_2: parseAddr2,
+    apt_number: '',
     city: parseCity || extracted.city || '',
     state: extracted.state || '',
-    postal_code: extracted.postal_code || '',
+    // [FIX] Extract postal_code from profile_address when last part looks like a postal code.
+    // The resume extraction (extracted.postal_code) is often empty, but the profile_address
+    // may contain the postal code as the last comma-separated part (e.g., "80-394").
+    postal_code: isPostalCode ? lastPart : (extracted.postal_code || ''),
     // [FIX] Country fallback from resume data when profile_address is empty.
     // Resume extraction stores country in extractedFields.country (e.g., "Poland").
     country: parseCountry || extracted.country || '',
@@ -1749,6 +1900,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await fillExperience();
       await fillEducation();
       await fillSkills();
+      await fillLanguages();
+      await fillLicenses();
       await fillAIQuestions();
       await fillApplicationQuestions();
       await fillLearnedRadios();
@@ -1767,6 +1920,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       education: fillEducation,
       skills: fillSkills,
       languages: fillLanguages,
+      licenses: fillLicenses,
       aiQuestions: fillAIQuestions,
       appQuestions: fillApplicationQuestions,
       radios: fillLearnedRadios,
@@ -1835,23 +1989,75 @@ const observer = new MutationObserver(function() {
     const total = fields.personal.length + fields.questions.length + fields.selects.length;
     if (total === 0) return;  // no fields found, nothing to do
 
-    // If the panel isn't open, just inject buttons on the new fields.
-    // If the panel IS open, update the field counts in the stats display.
-    const panel = document.getElementById('jc-panel');
-    if (!panel || !panel.classList.contains('open')) {
-      if (!document.getElementById('jc-float-btn')) {
-        injectFloatingButton();
-      }
-      injectPerFieldButtons();
-      attachGlobalLearning();
+    // Always inject F buttons on newly-rendered fields (regardless of panel state).
+    if (!document.getElementById('jc-float-btn')) {
+      injectFloatingButton();
     }
+    injectPerFieldButtons();
+    attachGlobalLearning();
 
+    const panel = document.getElementById('jc-panel');
     if (panel && panel.classList.contains('open')) {
       updatePanel();
     }
   }, 2000);
 });
 observer.observe(document.body, { childList: true, subtree: true });
+
+// ── Safety-net poller ──────────────────────────────────────────────
+// Runs every 3 seconds. Directly checks if any input/combobox is missing
+// an F button and creates one on the spot. This is a brute-force backup
+// for fields that FormDetector.detect() might miss (e.g., Oracle date
+// comboboxes with non-standard naming patterns). Polling stops after 5
+// consecutive no-op cycles.
+let _pollerQuietCycles = 0;
+setInterval(function() {
+  if (window.__jcFilling) return;
+  var injected = 0;
+  document.querySelectorAll('input:not([type=hidden]):not([type=file]), select, textarea, [role=combobox]').forEach(function(el) {
+    if (el.type === 'file') return;
+    if (el.offsetWidth === 0 || el.offsetHeight === 0) return;
+    var parent = el.parentElement;
+    if (!parent) return;
+    if (parent.querySelector('.jc-field-fill-btn')) return;
+    
+    // No F button found — inject one
+    injected++;
+    var btn = document.createElement('button');
+    btn.className = 'jc-field-fill-btn';
+    btn.title = 'Fill this field';
+    btn.textContent = 'F';
+    
+    // Build a generic field object for fillSingleField
+    var label = el.getAttribute('aria-label') || el.placeholder || el.name || el.id || '';
+    var lab = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'));
+    if (lab) label = lab.textContent?.trim() || label;
+    var fieldObj = { el: el, name: el.name || el.id || 'unknown', label: label };
+    
+    btn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      fillSingleField(fieldObj);
+    };
+    
+    if (getComputedStyle(parent).position === 'static') {
+      parent.style.position = 'relative';
+    }
+    var ancestor = parent;
+    while (ancestor && ancestor !== document.body) {
+      if (getComputedStyle(ancestor).overflow !== 'visible') {
+        ancestor.style.overflow = 'visible';
+      }
+      ancestor = ancestor.parentElement;
+    }
+    parent.appendChild(btn);
+  });
+  if (injected > 0) {
+    _pollerQuietCycles = 0;
+  } else {
+    _pollerQuietCycles++;
+  }
+}, 3000);
 
 // ── Start ──────────────────────────────────────────────────────────
 init();
