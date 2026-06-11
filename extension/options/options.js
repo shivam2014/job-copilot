@@ -544,8 +544,20 @@ function deleteSavedAnswer(index) {
 }
 
 document.getElementById('clear-corrections-btn')?.addEventListener('click', () => {
-  if (confirm('Clear all learned data (field values + AI answers)?')) {
+  const btn = document.getElementById('clear-corrections-btn');
+  if (btn.dataset.confirming === 'true') {
+    // Second click — proceed
+    btn.dataset.confirming = '';
+    btn.textContent = 'Clear All';
     chrome.storage.sync.set({ learned_fields: {}, saved_answers: [] }, renderLearnedCorrections);
+  } else {
+    // First click — ask for confirmation
+    btn.dataset.confirming = 'true';
+    btn.textContent = 'Click again to confirm';
+    setTimeout(() => {
+      btn.dataset.confirming = '';
+      btn.textContent = 'Clear All';
+    }, 4000);
   }
 });
 // Call renderLearnedCorrections on page load
@@ -1268,9 +1280,19 @@ function formatNum(n) { return n.toLocaleString(); }
 
 // Reset tokens
 document.getElementById('reset-tokens-btn').onclick = async () => {
-  if (confirm('Reset all token usage data?')) {
+  const btn = document.getElementById('reset-tokens-btn');
+  if (btn.dataset.confirming === 'true') {
+    btn.dataset.confirming = '';
+    btn.textContent = 'Reset Tokens';
     await TokenTracker.reset();
     renderTokenUsage();
+  } else {
+    btn.dataset.confirming = 'true';
+    btn.textContent = 'Click again to confirm';
+    setTimeout(() => {
+      btn.dataset.confirming = '';
+      btn.textContent = 'Reset Tokens';
+    }, 4000);
   }
 };
 
