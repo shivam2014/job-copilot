@@ -1175,94 +1175,83 @@ async function fillEducation() {
 // dropdown matching. This function iterates over all skills and
 // performs that flow for each one.
 async function fillSkills() {
-  const skills = await getResumeSection('skills');
-  if (!skills || skills.length === 0) return;
+  const section = await getResumeSection('skills');
+  if (!section || section.length === 0) {
+    console.log('JC: fillSkills — no skills data');
+    return;
+  }
+
+  const SKILLS_LIMIT = 15;
+  const skillsList = section.slice(0, SKILLS_LIMIT);
 
   let added = 0;
-  for (const skill of skills.slice(0, 15)) {
-    const skillTrimmed = (skill || '').trim();
-    if (!skillTrimmed) continue;
 
-    // 1. Click "Add More Skills" to open the skill entry form
+  for (let i = 0; i < skillsList.length; i++) {
+    const skillRaw = (skillsList[i] || '').toString().trim();
+    if (!skillRaw) continue;
+
+    // Click "Add More Skills" only if form is not already open
     const addMoreBtn = Array.from(document.querySelectorAll('button')).find(b =>
-      (b.textContent || '').trim() === 'Add More Skills' && (b.id || '').includes('profileItemsAddButton')
+      (b.textContent || '').trim() === 'Add More Skills' &&
+      b.offsetHeight > 0 && b.offsetParent !== null
     );
-    if (!addMoreBtn) { console.log('JC: No "Add More Skills" button'); break; }
-    // Only click if visible — after first skill added, button goes hidden (height:0)
-    // and events on zero-height elements are no-ops, so skip click if already open
-    if (addMoreBtn.offsetHeight > 0 && addMoreBtn.offsetParent !== null) {
-      // Real mouse events for Oracle React buttons
-      const r1 = addMoreBtn.getBoundingClientRect();
-      const o1 = { bubbles: true, cancelable: true, clientX: r1.left + r1.width/2, clientY: r1.top + r1.height/2, view: window, button: 0 };
-      addMoreBtn.dispatchEvent(new PointerEvent('pointerdown', o1));
-      addMoreBtn.dispatchEvent(new MouseEvent('mousedown', o1));
-      await new Promise(r => setTimeout(r, 50));
-      addMoreBtn.dispatchEvent(new PointerEvent('pointerup', o1));
-      addMoreBtn.dispatchEvent(new MouseEvent('mouseup', o1));
-      addMoreBtn.dispatchEvent(new MouseEvent('click', o1));
-      await new Promise(r => setTimeout(r, 1500));
-    } else {
-      console.log('JC: Add More Skills button hidden — skill entry already open');
+    if (addMoreBtn) {
+      const rect = addMoreBtn.getBoundingClientRect();
+      addMoreBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: rect.left + rect.width/2, clientY: rect.top + rect.height/2 }));
+      addMoreBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      addMoreBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      addMoreBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+      addMoreBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await new Promise(r => setTimeout(r, 600));
+    }
+
+    // Find the last skill combobox
+    const allSkillCombos = document.querySelectorAll('[name="skills"][role="combobox"]');
+    const skillCombo = allSkillCombos.length > 0 ? allSkillCombos[allSkillCombos.length - 1] : null;
+    if (!skillCombo) {
+      console.log('JC: fillSkills — no skill combobox found, stopping');
+      break;
+    }
+
+    // Use FormDetector's fillOracleCombobox to properly select from dropdown
+    const field = { el: skillCombo, name: 'skills', label: skillRaw };
+    const filled = await FormDetector.fillField(field, skillRaw);
+    if (!filled) {
+      console.log('JC: fillSkills — fillField failed for "' + skillRaw + '", trying direct paste fallback');
+      // Fallback: direct paste
+      skillCombo.focus();
+      skillCombo.value = skillRaw;
+      skillCombo.dispatchEvent(new InputEvent('input', { inputType: 'insertFromPaste', data: skillRaw, bubbles: true, cancelable: true }));
+      skillCombo.dispatchEvent(new Event('change', { bubbles: true }));
       await new Promise(r => setTimeout(r, 300));
     }
 
-    // 2. Find the skill combobox and fill with plain text (paste first, char-by-char fallback)
-    const allSkillCombos = document.querySelectorAll('[name="skills"][role="combobox"]');
-    const skillCombo = allSkillCombos.length > 0 ? allSkillCombos[allSkillCombos.length - 1] : null;
-    if (!skillCombo) { console.log('JC: No skill combobox found'); break; }
-
-    // Strategy A: paste
-    skillCombo.focus();
-    skillCombo.value = '';
-    skillCombo.dispatchEvent(new Event('input', { bubbles: true }));
-    skillCombo.value = skillTrimmed;
-    skillCombo.dispatchEvent(new InputEvent('input', {
-      inputType: 'insertFromPaste',
-      data: skillTrimmed,
-      bubbles: true,
-      cancelable: true,
-    }));
-    skillCombo.dispatchEvent(new Event('change', { bubbles: true }));
-    await new Promise(r => setTimeout(r, 200));
-
-    // Strategy B: char-by-char fallback if paste didn't stick
-    if (skillCombo.value !== skillTrimmed) {
-      skillCombo.focus();
-      skillCombo.value = '';
-      skillCombo.dispatchEvent(new Event('input', { bubbles: true }));
-      for (let i = 0; i < skillTrimmed.length; i++) {
-        skillCombo.value = skillTrimmed.substring(0, i + 1);
-        skillCombo.dispatchEvent(new Event('input', { bubbles: true }));
-        await new Promise(r => setTimeout(r, 20));
-      }
-      skillCombo.dispatchEvent(new Event('change', { bubbles: true }));
-      await new Promise(r => setTimeout(r, 200));
-    }
-
-    // 3. Click the "Add Skill" button (not the "Add More Skills" one)
+    // Click "Add Skill" button
     const submitBtn = Array.from(document.querySelectorAll('button')).find(b =>
-      (b.textContent || '').trim() === 'Add Skill' && b.offsetHeight > 0 && b.offsetParent !== null && !(b.id || '').includes('profileItemsAddButton')
+      (b.textContent || '').trim() === 'Add Skill' &&
+      b.offsetHeight > 0 && b.offsetParent !== null &&
+      !(b.id || '').includes('profileItemsAddButton')
     );
     if (submitBtn) {
-      // Real mouse events for Oracle React buttons
-      const r2 = submitBtn.getBoundingClientRect();
-      const o2 = { bubbles: true, cancelable: true, clientX: r2.left + r2.width/2, clientY: r2.top + r2.height/2, view: window, button: 0 };
-      submitBtn.dispatchEvent(new PointerEvent('pointerdown', o2));
-      submitBtn.dispatchEvent(new MouseEvent('mousedown', o2));
+      const rect = submitBtn.getBoundingClientRect();
+      submitBtn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: rect.left + rect.width/2, clientY: rect.top + rect.height/2 }));
+      submitBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       await new Promise(r => setTimeout(r, 50));
-      submitBtn.dispatchEvent(new PointerEvent('pointerup', o2));
-      submitBtn.dispatchEvent(new MouseEvent('mouseup', o2));
-      submitBtn.dispatchEvent(new MouseEvent('click', o2));
+      submitBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+      submitBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      submitBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       await new Promise(r => setTimeout(r, 800));
       added++;
+      console.log('JC: fillSkills — added "' + skillRaw + '" (' + added + '/' + skillsList.length + ')');
     } else {
-      console.log('JC: No "Add Skill" button found for \"' + skillTrimmed + '\"');
+      console.log('JC: fillSkills — no Add Skill button found for "' + skillRaw + '"');
+      break;
     }
   }
 
   if (added > 0) {
     showStatus('Added ' + added + ' skill(s)', 'success');
-    console.log('JC: Added ' + added + ' skill(s)');
+    console.log('JC: fillSkills — added ' + added + ' skill(s)');
   }
 }
 
