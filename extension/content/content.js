@@ -329,16 +329,21 @@ function createPanel() {
 
   jcPanel.querySelector('#jc-fill-all').onclick = async () => {
     setFilling(true);
-    await fillPersonal();
-    await fillExperience();
-    await fillEducation();
-    await fillSkills();
-    await fillLanguages();
-    await fillLicenses();
-    await fillAIQuestions();
-    await fillApplicationQuestions();
-    await fillLearnedRadios();
-    setFilling(false);
+    try {
+      await fillPersonal();
+      await fillExperience();
+      await fillEducation();
+      await fillSkills();
+      await fillLanguages();
+      await fillLicenses();
+      await fillAIQuestions();
+      await fillApplicationQuestions();
+      await fillLearnedRadios();
+    } catch (err) {
+      console.error('[JC] Fill All error:', err);
+    } finally {
+      setFilling(false);
+    }
   };
 
   // TRIGGER: user clicks "Clear All" in the panel.
@@ -695,9 +700,10 @@ async function fillAIQuestions() {
 // checks if the question text matches a stored key. If you previously
 // answered "Yes" to "Are you authorized to work?", it checks that button again.
 async function fillLearnedRadios() {
+  let corrections = {};
   try {
     const result = await chrome.storage.sync.get('learned_fields');
-    const corrections = result.learned_fields || {};
+    corrections = result.learned_fields || {};
 
     const radios = document.querySelectorAll('input[type="radio"]');
     const groups = new Map();
@@ -731,6 +737,43 @@ async function fillLearnedRadios() {
     if (filled > 0) console.log('JC: Filled ' + filled + ' radio question(s) from learned answers');
   } catch(e) {
     console.error('JC: Error filling radios:', e);
+  }
+
+  // --- Oracle CX Pill Button handling ---
+  try {
+    const pillContainers = document.querySelectorAll('ul[role="list"]');
+    for (const ul of pillContainers) {
+      const question = ul.getAttribute('aria-label') || '';
+      if (!question) continue;
+      
+      // Find matching learned answer
+      let answer = null;
+      for (const [key, val] of Object.entries(corrections)) {
+        if (key.startsWith('radio_') && val && key.toLowerCase().includes(question.toLowerCase().substring(0, 20))) {
+          answer = val;
+          break;
+        }
+      }
+      if (!answer) continue;
+      
+      // Find matching pill button
+      const buttons = ul.querySelectorAll('button');
+      for (const btn of buttons) {
+        const btnText = (btn.textContent || '').trim().toLowerCase();
+        if (btnText === answer.toLowerCase() || btnText.startsWith(answer.toLowerCase())) {
+          // Click using proven PointerEvent sequence
+          btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+          btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          btn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          btn.click();
+          console.log(`[JC] Pill clicked: ${question} → ${answer}`);
+          break;
+        }
+      }
+    }
+  } catch (pillErr) {
+    console.warn('[JC] Pill button fill error:', pillErr);
   }
 }
 
@@ -1532,20 +1575,65 @@ async function buildFillMap() {
 
   const address = (profile.profile_address || '').trim();
   const addrParts = address ? address.split(',').map(s => s.trim()).filter(Boolean) : [];
-  const hasMultiPartAddr = addrParts.length >= 3;
-  const parseAddr = hasMultiPartAddr ? addrParts[0] : '';
-  const parseAddr2 = hasMultiPartAddr ? (addrParts.length >= 4 ? addrParts[1] : '') : '';
-  const parseCity = hasMultiPartAddr ? addrParts[addrParts.length - 2] : (addrParts.length === 2 ? addrParts[0] : '');
-  // Last part might be country, postal code, or something else
+  // Extract postal code (digits with optional hyphen) from any position
+  const postalCodePattern = /^\d{2,6}[-\s]?\d{1,6}$/;  // Matches "80-394", "12345", "SW1A 1AA" variants
+
+  // Detect apartment/unit numbers (short alphanumeric like "7A", "Suite 200", "Apt 3")
+  const aptPattern = /^\d{1,4}[A-Za-z]$|^(?:apt|unit|suite|floor|fl|bldg)\s*\d+$/i;
+  const isApartment = (s) => aptPattern.test(s.trim());
+
+  // Pre-process: extract apartment number from position [1] if present
+  let apartmentNumber = '';
+  if (addrParts.length >= 3 && isApartment(addrParts[1])) {
+    apartmentNumber = addrParts[1];
+    addrParts.splice(1, 1);  // Remove apartment from array
+  }
+
+  // Recompute indices after potential splice
+  const postalIdx = addrParts.findIndex(p => postalCodePattern.test(p));
+  const isPostalCode = postalIdx >= 0;
+  const lastPart = addrParts[addrParts.length - 1] || '';
+  const isLastPartCountry = lastPart && !postalCodePattern.test(lastPart) && lastPart.length > 3 && addrParts.length > 1;
+
+  let parseAddr = '';
+  let parseAddr2 = '';
+  let parseCity = '';
+  let parsePostal = '';
+
+  if (addrParts.length === 0) {
+    // Empty address
+  } else if (addrParts.length === 1) {
+    parseAddr = addrParts[0]; // Single value → street
+  } else if (addrParts.length === 2) {
+    // "Street, City" or "City, Country"
+    parseAddr = addrParts[0];
+    parseCity = addrParts[1];
+  } else if (isPostalCode && postalIdx === addrParts.length - 2) {
+    // "Street, City, PostalCode" pattern
+    parseAddr = addrParts[0];
+    parseCity = addrParts[1];
+    parsePostal = addrParts[postalIdx];
+  } else if (isLastPartCountry) {
+    // "Street, City, PostalCode, Country" pattern (apartment already extracted)
+    parseAddr = addrParts[0];
+    parseCity = addrParts.length >= 3 ? addrParts[1] : addrParts[0];
+    parsePostal = postalIdx >= 0 ? addrParts[postalIdx] : '';
+  } else {
+    // Fallback: first part is street, second is city
+    parseAddr = addrParts[0];
+    parseCity = addrParts.length >= 3 ? addrParts[1] : addrParts[0];
+    parsePostal = postalIdx >= 0 ? addrParts[postalIdx] : '';
+  }
   // Cache: parse resume_full_data once for extractedFields fallbacks
   let extracted = {};
   try { extracted = JSON.parse(profile.resume_full_data || '{}').extractedFields || {}; } catch {}
+  let parseCountry = isLastPartCountry ? lastPart : (extracted.country || '');
 
-  const lastPart = addrParts.length > 0 ? addrParts[addrParts.length - 1] : '';
-  // If last part looks like a postal code (digits+hyphen) or isn't a known country, don't use as country
-  const isPostalCode = /^\d[\d\s-]*$/.test(lastPart);
-  const knownCountries = /^(usa|uk|france|germany|spain|italy|poland|canada|australia|india|china|japan|brazil|mexico|netherlands|switzerland|sweden|norway|denmark|finland|belgium|austria|ireland|portugal|new zealand|singapore|malaysia|united states|united kingdom|united arab emirates|uae|south korea|south africa|turkey|israel|egypt|nigeria|kenya|thailand|vietnam|indonesia|philippines|argentina|chile|colombia|peru|czech republic|czechia|hungary|romania|ukraine|russia|saudi arabia|qatar|oman|kuwait|bahrain|luxembourg|monaco|liechtenstein|andorra|malta|iceland|estonia|latvia|lithuania|slovakia|slovenia|croatia|bulgaria|serbia|bosnia|albania|macedonia|montenegro|belarus|moldova|georgia|armenia|azerbaijan|kazakhstan|uzbekistan|turkmenistan|kyrgyzstan|tajikistan|afghanistan|pakistan|bangladesh|sri lanka|nepal|bhutan|maldives|myanmar|laos|cambodia|mongolia|taiwan|hong kong|macau|poland)$/i;
-  const parseCountry = !isPostalCode && knownCountries.test(lastPart) ? lastPart : (extracted.country || '');
+  // If country looks like a postal code and postal is empty, swap them
+  if (!parsePostal && parseCountry && postalCodePattern.test(parseCountry)) {
+    parsePostal = parseCountry;
+    parseCountry = extracted.country || '';
+  }
 
   return {
     name: nameStr,
@@ -1572,16 +1660,13 @@ async function buildFillMap() {
     // Oracle CX has siteLink-1 (type=url) for supporting documents.
     // If profile_website is empty, use linkedin URL so the field gets filled.
     website: profile.profile_website || profile.profile_linkedin || '',
-    address: hasMultiPartAddr ? '' : address,
-    street_address: parseAddr,
-    street_address_2: parseAddr2,
+    address: addrParts.length >= 3 ? '' : address,
+    street_address: parseAddr || extracted.street_address || '',
+    street_address_2: parseAddr2 || apartmentNumber || extracted.street_address_2 || '',
     apt_number: '',
     city: parseCity || extracted.city || '',
     state: extracted.state || '',
-    // [FIX] Extract postal_code from profile_address when last part looks like a postal code.
-    // The resume extraction (extracted.postal_code) is often empty, but the profile_address
-    // may contain the postal code as the last comma-separated part (e.g., "80-394").
-    postal_code: isPostalCode ? lastPart : (extracted.postal_code || ''),
+    postal_code: parsePostal || extracted.postal_code || '',
     // [FIX] Country fallback from resume data when profile_address is empty.
     // Resume extraction stores country in extractedFields.country (e.g., "Poland").
     country: parseCountry || extracted.country || '',
@@ -1890,16 +1975,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'jc_fill_all') {
     setFilling(true);
     (async () => {
-      await fillPersonal();
-      await fillExperience();
-      await fillEducation();
-      await fillSkills();
-      await fillLanguages();
-      await fillLicenses();
-      await fillAIQuestions();
-      await fillApplicationQuestions();
-      await fillLearnedRadios();
-      setFilling(false);
+      try {
+        await fillPersonal();
+        await fillExperience();
+        await fillEducation();
+        await fillSkills();
+        await fillLanguages();
+        await fillLicenses();
+        await fillAIQuestions();
+        await fillApplicationQuestions();
+        await fillLearnedRadios();
+      } catch (err) {
+        console.error('[JC] Fill All message error:', err);
+      } finally {
+        setFilling(false);
+      }
     })();
     sendResponse({ ok: true });
     return true;
