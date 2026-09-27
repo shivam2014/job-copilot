@@ -350,6 +350,44 @@ function pageHasApplicationForm(doc) {
 // Attaches blur listeners to ALL detected text inputs/textareas.
 // When you manually fill a field JC didn't touch (address, street, etc.),
 // the value is saved to learned_fields. Next Fill All will use it.
+//
+// [FIX L1] Inert learned keys. 'unknown' and 'custom' are synthetic
+// identities, not field identities: resolveFieldValue() above never reads
+// them, so an entry learned under one is dead weight that grows on every
+// AI-filled field (live case: learned_fields['unknown'] = the AI answer
+// written into Lever's cards[uuid][field0] textarea).
+const INERT_LEARNED_KEYS = ['unknown', 'custom'];
+
+// A blurred value may be persisted as a learned correction only when its key
+// is a REAL field identity. Exact predicate:
+//   1. key non-empty after trim;
+//   2. key is not an inert synthetic key ('unknown' | 'custom');
+//   3. the element exposes a non-empty name or id of its own.
+// Anything else is skipped — never written to learned_fields.
+function isLearnableFieldKey(key, el) {
+  const k = String(key == null ? '' : key).trim();
+  if (!k) return false;                                   // empty key
+  if (INERT_LEARNED_KEYS.indexOf(k) !== -1) return false; // 'unknown' | 'custom'
+  const name = String((el && el.name) || '').trim();
+  const id = String((el && el.id) || '').trim();
+  if (!name && !id) return false;                         // no real field identity
+  return true;
+}
+
+// [FIX L2] An AI answer is a JC write, not a user edit. FormDetector.fillField()
+// blurs the element (form-detector.js: el.blur()), so the blur fires
+// synchronously DURING the fill — the markers must be on the element BEFORE
+// the call, otherwise every blur handler reads the answer as a user
+// correction. jcFilled/jcValue are the same markers the normal fill path sets
+// (listenForCorrections, below); jcOriginal mirrors form-detector's own marker
+// so the attachGlobalLearning blur branch compares equal and stays silent.
+function markAIFill(el, value) {
+  if (!el || !el.dataset) return;
+  el.dataset.jcFilled = 'true';
+  el.dataset.jcValue = value;
+  el.dataset.jcOriginal = value;
+}
+
 const _learnedEls = new WeakSet();
 function attachGlobalLearning() {
   const fields = FormDetector.detect();
@@ -364,18 +402,23 @@ function attachGlobalLearning() {
     _learnedEls.add(el);
 
     const fieldName = field.name || el.name || el.id;
+    // [FIX L1] Non-identifying fields are never learned (see
+    // isLearnableFieldKey): inert synthetic key, or no name/id on the element.
+    const learnable = isLearnableFieldKey(fieldName, el);
     el.addEventListener('blur', function onUserEdit() {
       // Was filled by extension — only learn if user edited the value
       if (el.dataset.jcFilled === 'true') {
         if (el.value !== el.dataset.jcOriginal) {
-          saveLearnedCorrection(fieldName, el.value);
+          if (learnable) saveLearnedCorrection(fieldName, el.value);
         }
         return;
       }
       const val = el.value?.trim();
-      if (val && fieldName) {
+      if (val && learnable) {
         saveLearnedCorrection(fieldName, val);
         console.log('JC: Learned from user: "' + fieldName + '" = "' + val + '"');
+      } else if (val && !learnable) {
+        console.log('JC: Not learning "' + fieldName + '" — no real field identity (name/id)');
       }
       // Don't remove listener — keep saving on every blur so corrections work
     });
@@ -426,6 +469,8 @@ async function init() {
     // [FIX B] One-time cleanup of learned_fields poisoned by the old
     // website→LinkedIn fallback and by learning profile-owned keys.
     migrateLearnedFieldsOnce();
+    // [FIX L1] One-time cleanup of the inert synthetic keys ('unknown'/'custom').
+    migrateInertLearnedKeysOnce();
     detectedFields = FormDetector.detect();
     const totalFields = detectedFields.personal.length +
                         detectedFields.questions.length +
@@ -731,6 +776,7 @@ async function fillSingleField(field) {
         console.warn('JC: fillSingleField — no usable answer for "' + question + '" — field left blank');
         return;
       }
+      markAIFill(field && field.el, result.answer); // [FIX L2] markers before the blur inside fillField
       await FormDetector.fillField(field, result.answer);
       fillStats.aiFilled++;
       await saveAnswer(question, result.answer);
@@ -963,6 +1009,7 @@ async function fillAIQuestions() {
         continue;
       }
       const answer = result.answer;
+      markAIFill(field && field.el, answer); // [FIX L2] markers before the blur inside fillField
       await FormDetector.fillField(field, answer);
 
       try {
@@ -2092,6 +2139,12 @@ async function saveLearnedCorrection(fieldName, value) {
   // them. Learning only covers unknown/custom fields. Checked on the raw
   // field name AND its generic category (e.g. "emailAddress" → "email").
   if (!fieldName || !value) return;
+  // [FIX L1] Backstop at the single write choke point: inert synthetic keys
+  // are never persisted, whoever calls this.
+  if (INERT_LEARNED_KEYS.indexOf(String(fieldName).trim()) !== -1) {
+    console.log('JC: Refused to learn "' + fieldName + '" — inert synthetic key');
+    return;
+  }
   if (isProfileOwnedKey(fieldName)) {
     console.log('JC: Refused to learn "' + fieldName + '" — profile owns this field');
     return;
@@ -2134,6 +2187,32 @@ async function migrateLearnedFieldsOnce() {
       (removed.length ? ': ' + removed.join(', ') : ''));
   } catch (e) {
     console.log('JC: learned_fields migration failed:', e.message);
+  }
+}
+
+// [FIX L1] One-time cleanup of the learned_fields entries polluted before the
+// inert-key guard existed. ONLY the inert synthetic keys are dropped (exact
+// set: INERT_LEARNED_KEYS = ['unknown','custom']); every key a fill could
+// actually read (resolveFieldValue / mergeLearnedCorrections) is preserved.
+// Guarded by a storage flag so it runs once.
+async function migrateInertLearnedKeysOnce() {
+  try {
+    const flags = await chrome.storage.sync.get('jc_learned_migration_v2');
+    if (flags.jc_learned_migration_v2) return;
+    const res = await chrome.storage.sync.get('learned_fields');
+    const learned = res.learned_fields || {};
+    const removed = [];
+    const kept = {};
+    for (const [key, val] of Object.entries(learned)) {
+      if (INERT_LEARNED_KEYS.indexOf(String(key).trim()) !== -1) removed.push(key);
+      else kept[key] = val;
+    }
+    if (removed.length) await chrome.storage.sync.set({ learned_fields: kept });
+    await chrome.storage.sync.set({ jc_learned_migration_v2: true });
+    console.log('JC: learned_fields migration v2 (inert keys) — removed ' + removed.length + ' key(s)' +
+      (removed.length ? ': ' + removed.join(', ') : ''));
+  } catch (e) {
+    console.log('JC: learned_fields migration v2 failed:', e.message);
   }
 }
 

@@ -118,7 +118,7 @@ Final field dump:
 `learned_fields` keys before = `["unknown"]`, after = `["unknown"]` → **unchanged** (requirement met).
 Raw dumps: `/tmp/jc-live/final-run.json`, screenshot `/tmp/jc-live/shots/final-lever-after.png`.
 
-**Caveat found during the confirmation run (not fixed — outside the file scope of this wrap-up):**
+**Caveat found during the confirmation run (FIXED since — see the `learned_fields['unknown']` item under "What is still not done"):**
 the *value* stored under the synthetic key `unknown` was overwritten by the new AI answer text.
 Cause: the blur-learning path (`extension/content/content.js:366-380`) learns any non-`jcFilled` field on
 blur, and the AI fill's focus/blur commit trips it; the Lever question card has no detector name, so the
@@ -144,7 +144,7 @@ by the AI path (set `dataset.jcFilled` before the blur commit).
   education/language sections; measured terminal status at 36 s in the confirmation run.
 - **Lever "Current location" auto-commit** relies on re-asserting the value after the site rewrites it
   (`[FIX K2]`, `content.js:870`); if Lever changes that widget, re-verify.
-- **Learned-value growth under the synthetic `unknown` key** (see caveat above).
+- **FIXED — Learned-value growth under the synthetic `unknown` key** (caveat above): the learned-write predicate now requires a real field identity (`unknown`/empty is skipped), AI writes are pre-marked with `jcFilled` before the blur commit, and the one-shot `jc_learned_migration_v2` cleanup removed the already-polluted key.
 - LLM retries remain **bounded and limited** to 502/503/504 + network errors; no queue, no backoff
   beyond the fixed retry count.
 - The local Nyro gateway's model list changes; always pick the model from the fetched
