@@ -55,6 +55,12 @@
           <span class="field-hint" id="model-count"></span>
         </div>
       </div>
+
+      <div class="field">
+        <label>Extra Headers (JSON)</label>
+        <input type="text" id="llm_extra_headers" placeholder='{"x-opencode-session":"pi-local"}' autocomplete="off">
+        <span class="field-hint">Sent with every LLM request. The local Nyro gateway requires <code>x-opencode-session</code>; harmless elsewhere — clear this if your endpoint rejects it.</span>
+      </div>
     </section>
 
     <!-- Step 2: Upload Resume -->

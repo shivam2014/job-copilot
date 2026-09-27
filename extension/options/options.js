@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   // Load saved values into form
   const fields = [
-    'llm_base_url', 'llm_api_key', 'llm_model',
+    'llm_base_url', 'llm_api_key', 'llm_model', 'llm_extra_headers',
     'profile_name', 'profile_email', 'profile_phone',
     'profile_linkedin', 'profile_github', 'profile_website',
     'profile_address', 'profile_work_authorization',
@@ -20,11 +20,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('llm_base_url').value = 'http://localhost:19530/v1';
   if (!document.getElementById('llm_api_key').value)
     document.getElementById('llm_api_key').value = 'dummy';
-  // Clear model if it was a pre-filled default from an older version
-  const savedModel = document.getElementById('llm_model').value;
-  if (savedModel && ['gpt-4o-mini'].includes(savedModel)) {
-    document.getElementById('llm_model').value = '';
-  }
+  // [FIX K4] No pinned model default. The gateway answers unknown model ids
+  // with an opaque HTTP 404 "no route for model", so a pinned default made a
+  // fresh install fail before the LLM was ever reached. An empty model now
+  // surfaces the actionable error "No model configured — open Settings and pick
+  // one from the fetched model list" (lib/llm-client.js / background.js), and
+  // the authoritative list always comes from `${base_url}/models`.
+  // Extra headers sent with every LLM request. The local Nyro gateway rejects
+  // requests without x-opencode-session (HTTP 400 MissingSessionID); this is
+  // harmless against other endpoints and users can clear this field.
+  if (!document.getElementById('llm_extra_headers').value)
+    document.getElementById('llm_extra_headers').value = '{"x-opencode-session":"pi-local"}';
+  // NOTE: the saved model is deliberately NOT rewritten here any more. The
+  // previous version replaced a saved model with a hard-coded one on every page
+  // load, which is how a correctly configured install (storage: deepseek-v4-flash-2,
+  // the only model the endpoint serves) ended up calling qwen3.7-plus and getting
+  // HTTP 404 "no route for model". Storage is the user's setting; only the empty
+  // case gets a default.
   // Model loaded on focus from endpoint's /v1/models
 
   updateConfigStatus();
@@ -186,62 +198,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       const resp = await fetch(baseUrl + '/chat/completions', {
         signal: extractAbort.signal,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        // Same merge rule as LLMClient.chat() and testConnection(): configured
+        // extra headers first, explicit Content-Type/Authorization win on
+        // collision. Without this the extraction request went out with no
+        // x-opencode-session and the gateway answered HTTP 400 MissingSessionID —
+        // the model was never called at all.
+        headers: {
+          ...parseExtraHeadersFromForm(),
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey,
+        },
         body: JSON.stringify({ model: model, messages: [{ role: 'system', content: prompt }, { role: 'user', content: 'Resume:\n\n' + resumeText.slice(0, 6000) }], temperature: 0.01, max_tokens: 32000 }),
       });
       if (!resp.ok) throw new Error('API ' + resp.status + ': ' + (await resp.text().catch(function() { return resp.statusText; })));
       const data = await resp.json();
-      const msg = data.choices?.[0]?.message;
-      if (!msg) throw new Error('Empty response from API');
+      // readChatMessage() guards choices[0]; `data.choices[0].message` threw a
+      // TypeError on an empty/missing choices array, which surfaced as an
+      // unrelated error message.
+      const chat = readChatMessage(data, model);
       if (data.usage) { try { TokenTracker.record(model, data.usage); } catch(e) {} }
-      let raw = (msg.content || msg.reasoning_content || '').trim();
-      if (!raw) throw new Error('Empty response from API');
+      let raw = chat.content || chat.reasoning;
       // Try markdown fenced JSON first
       const jm = raw.match(/\`\`\`(?:json)?\s*(\{[\s\S]*?\})\s*\`\`\`/);
       if (jm) { raw = jm[1]; }
-      // Find JSON by walking back from last } to matching {
-      var end = raw.lastIndexOf('}');
-      if (end === -1) throw new Error('No JSON found');
-      var depth = 0, start = -1;
-      for (var i = end; i >= 0; i--) {
-        if (raw[i] === '}') depth++;
-        else if (raw[i] === '{') depth--;
-        if (depth === 0) { start = i; break; }
-      }
-      if (start === -1) throw new Error('Unbalanced JSON');
-var jsonStr = raw.slice(start, end + 1);
-      // Sanitize common LLM JSON issues: single quotes, trailing commas, truncation
-      // Single quote fix moved to recovery
-      // Smart double quote fix moved to recovery
-      // Trailing comma fix moved to recovery
-      // Trailing comma fix moved to recovery
-      // Fix unquoted keys moved to recovery (below)
-      jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
-      // Try parsing, if fails try to fix and retry
-      var profile;
-console.log('JC DEBUG jsonStr length:', jsonStr.length);
-      // Log full jsonStr in chunks to avoid truncation
-      for (var ci = 0; ci < jsonStr.length; ci += 2000) {
-        console.log('JC DEBUG chunk ' + ci + ': ' + jsonStr.substring(ci, ci + 2000));
-      }
-      try {
-        profile = JSON.parse(jsonStr);
-      } catch (e) {
-        // Last resort: try finding valid JSON by scanning for patterns
-        console.log('JC JSON parse error, trying recovery...');
-        // Try sanitizing common LLM JSON issues
-        jsonStr = jsonStr.replace(/['\u2018\u2019]/g, '"'); // Single quotes to double
-        jsonStr = jsonStr.replace(/\u201c|\u201d/g, '"'); // Smart double quotes
-        jsonStr = jsonStr.replace(/,\s*}/g, '}'); // Trailing commas
-        jsonStr = jsonStr.replace(/,\s*\]/g, ']'); // Trailing commas
-        // Fix unquoted keys (e.g. {name: "value"} -> {"name": "value"})
-        jsonStr = jsonStr.replace(/([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
-        // Try wrapping unquoted strings in single quotes (rare LLM output)
-        jsonStr = jsonStr.replace(/:\s*'([^']*?)'([,}])/g, ':"$1"$2');
-        try { profile = JSON.parse(jsonStr); } catch(e2) {
-          throw new Error('JSON response was truncated (max_tokens too low). Try again or use a shorter resume. Response: ' + jsonStr.substring(0, 150) + '...');
-        }
-      }
+      // Parse the reply into a validated profile. All recovery/validation logic
+      // lives in parseLLMProfileJSON() (bottom of this file) so it is unit
+      // testable without a DOM — see test/extraction_parse.mjs.
+      var parsed = parseLLMProfileJSON(raw, { finishReason: chat.finishReason });
+      var profile = parsed.profile;
+      console.log('JC extract: parsed reply', { repaired: parsed.repaired, missing: parsed.missing });
       const fieldMap = { profile_name: 'name', profile_email: 'email', profile_phone: 'phone', profile_linkedin: 'linkedin', profile_github: 'github', profile_website: 'website', profile_address: 'address', profile_work_authorization: 'work_authorization' };
       // Store full resume data for AI context
       var fullData = { extractedFields: {}, rawSections: {} };
@@ -265,8 +250,17 @@ console.log('JC DEBUG jsonStr length:', jsonStr.length);
       let filled = 0;
       for (const [id, key] of Object.entries(fieldMap)) {
         const el = document.getElementById(id);
-        if (profile[key] && profile[key].trim()) { el.value = profile[key].trim(); filled++; }
-
+        if (!el) continue;
+        // profile_address is assembled: the model returns street/city/state/
+        // postal_code/country separately, so `profile.address` never existed and
+        // the address box silently kept a stale, unrelated value forever.
+        let value = id === 'profile_address' ? composeAddress(profile) : profile[key];
+        value = typeof value === 'string' ? value.trim() : '';
+        // Empty means "not in the resume" — leave the box alone rather than
+        // writing an empty or invented value over what the user has.
+        if (!value) continue;
+        el.value = value;
+        filled++;
       }
       // Save full resume data for AI context
       try { chrome.storage.sync.set({ resume_full_data: JSON.stringify(fullData) }); } catch(e) {}
@@ -279,7 +273,10 @@ console.log('JC DEBUG jsonStr length:', jsonStr.length);
       if (typeof debouncedSave === 'function') debouncedSave();
       // Refresh the Full Resume Data section
       renderResumeData();
-      statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.';
+      var notes = '';
+      if (parsed.repaired) notes += ' ⚠️ JSON needed structural repair';
+      if (parsed.missing.length) notes += ' ⚠️ not returned by the model: ' + parsed.missing.join(', ');
+      statusEl.textContent = '✅ Extracted ' + filled + ' field(s)' + (sourceLabel ? ' from ' + sourceLabel : '') + '. Review and edit below.' + notes;
       statusEl.className = 'field-hint success';
       if (sourceLabel) {
         btn.disabled = true;
@@ -563,6 +560,267 @@ document.getElementById('clear-corrections-btn')?.addEventListener('click', () =
 // Call renderLearnedCorrections on page load
 setTimeout(renderLearnedCorrections, 800);
 
+// ── LLM profile parsing, validation and repair ──────────────────────────────
+// Pure, DOM-free helpers (no chrome.*, no document.*) so the code that decides
+// what a resume contains is testable on its own — see test/extraction_parse.mjs.
+
+// Every key the extraction prompt asks the model for. Used to REPORT what came
+// back missing instead of quietly filling fewer fields than the user expects.
+const PROFILE_REQUIRED_KEYS = [
+  'name', 'email', 'phone', 'linkedin', 'github', 'website',
+  'street', 'city', 'state', 'postal_code', 'country',
+  'work_authorization', 'summary', 'skills', 'experience', 'education',
+  'languages', 'projects', 'publications',
+];
+
+// A value is "not really there" when the model sends null/undefined — whether as
+// a JSON null or as the literal string "null"/"undefined". Those must be dropped,
+// never stored: a field is either real data from the resume or absent.
+function isNullishValue(v) {
+  if (v === null || v === undefined) return true;
+  if (typeof v === 'string') {
+    const t = v.trim().toLowerCase();
+    return t === 'null' || t === 'undefined';
+  }
+  return false;
+}
+
+// Drop nullish entries everywhere in the object graph and trim strings.
+function normalizeProfile(value) {
+  if (Array.isArray(value)) {
+    const out = [];
+    for (const item of value) {
+      if (isNullishValue(item)) continue;
+      out.push(item && typeof item === 'object' ? normalizeProfile(item) : item);
+    }
+    return out;
+  }
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (isNullishValue(v)) continue;
+      if (v && typeof v === 'object') out[k] = normalizeProfile(v);
+      else out[k] = typeof v === 'string' ? v.trim() : v;
+    }
+    return out;
+  }
+  return value;
+}
+
+// Keys the model was asked for but did not return (absent or null). Reported to
+// the user, never silently swallowed.
+function missingProfileKeys(profile) {
+  const src = profile && typeof profile === 'object' ? profile : {};
+  return PROFILE_REQUIRED_KEYS.filter(k => !(k in src) || isNullishValue(src[k]));
+}
+
+// Net brace/bracket depth outside of string literals. > 0 means more structures
+// were opened than closed, i.e. the reply stops mid-object → incomplete.
+function jsonBraceBalance(src) {
+  let depth = 0, inStr = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inStr) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') depth--;
+  }
+  return depth;
+}
+
+// Repair only STRUCTURAL defects. Characters inside a JSON string literal are
+// copied byte-for-byte: the previous implementation ran regexes over the whole
+// document, so "Master's Degree" became "Master"s Degree" and a value such as
+// "matching, torch: nimble" became "matching,"torch": nimble" — turning already
+// valid JSON into a parse error. Applied ONLY after a plain JSON.parse fails.
+function repairJsonStructure(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const ch = src[i];
+    if (ch === '"') {
+      out += ch;
+      i++;
+      while (i < n) {
+        if (src[i] === '\\') { out += (src[i] + (i + 1 < n ? src[i + 1] : '')); i += 2; continue; }
+        out += src[i];
+        if (src[i] === '"') { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    if (ch === '{' || ch === ',') {
+      const rest = src.slice(i);
+      const next = rest.match(/^([{,])(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*):/);
+      if (next) {
+        out += next[1] + next[2] + '"' + next[3] + '"' + next[4] + ':';
+        i += next[0].length;
+        continue;
+      }
+      if (ch === ',') {
+        let j = i + 1;
+        while (j < n && /\s/.test(src[j])) j++;
+        if (src[j] === '}' || src[j] === ']') { i = j; continue; } // drop trailing comma
+      }
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === '\u201c' || ch === '\u201d') { out += '"'; i++; continue; }   // smart double quotes
+    if (ch === '\u2018' || ch === '\u2019') { out += "'"; i++; continue; }   // smart single quotes
+    if (ch === "'") {
+      // Rare single-quoted string. Convert to a double-quoted string, escaping
+      // any double quote inside it. Apostrophes INSIDE a double-quoted string
+      // never reach this branch.
+      let j = i + 1, buf = '';
+      while (j < n && src[j] !== "'") {
+        if (src[j] === '\\') { buf += (j + 1 < n ? src[j + 1] : ''); j += 2; continue; }
+        buf += src[j];
+        j++;
+      }
+      if (j < n) { out += '"' + buf.replace(/"/g, '\\"') + '"'; i = j + 1; continue; }
+      out += ch;
+      i++;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+// Single address line for the profile form. The prompt asks for street/city/
+// state/postal_code/country separately and the model answers with those; nothing
+// merged them into the single `profile_address` box, so the box kept whatever it
+// held before (an unrelated stale value) while the model's real location was only
+// ever kept in resume_full_data. Returns '' when the resume has no location.
+function composeAddress(profile) {
+  const p = profile && typeof profile === 'object' ? profile : {};
+  const explicit = typeof p.address === 'string' ? p.address.trim() : '';
+  if (explicit) return explicit;
+  return ['street', 'city', 'state', 'postal_code', 'country']
+    .map(k => (typeof p[k] === 'string' ? p[k].trim() : ''))
+    .filter(Boolean)
+    .join(', ');
+}
+
+// Pull the assistant message out of an OpenAI-compatible response body. Never
+// dereferences choices[0] blindly (that used to throw a TypeError, reported to the
+// user as a different error), and says what was actually wrong.
+function readChatMessage(data, model) {
+  if (!data || typeof data !== 'object') throw new Error('API returned a non-JSON body');
+  const choices = Array.isArray(data.choices) ? data.choices : [];
+  const choice = choices[0];
+  const message = choice && choice.message ? choice.message : null;
+  if (!message) {
+    const detail = data.error ? ' — ' + (data.error.message || JSON.stringify(data.error)) : '';
+    throw new Error('API returned no message (choices: ' + (choices.length ? 'present but empty' : '[]') +
+      ') for model "' + (model || '?') + '"' + detail + '. Check the model name and the endpoint.');
+  }
+  return {
+    content: typeof message.content === 'string' ? message.content.trim() : '',
+    reasoning: typeof message.reasoning_content === 'string' ? message.reasoning_content.trim() : '',
+    finishReason: (choice && choice.finish_reason) || '',
+  };
+}
+
+// Turn a raw LLM reply into a validated profile.
+//   - fenced ```/```json blocks and surrounding prose (reasoning models) are OK
+//   - a plain JSON.parse is tried FIRST, so valid JSON is never rewritten
+//   - structural repair runs only when that fails, and never touches string bodies
+//   - the failure message names the real cause: the old code reported every parse
+//     failure as "truncated (max_tokens too low)", which was usually wrong
+// Returns { profile, missing, repaired }.
+function parseLLMProfileJSON(raw, opts) {
+  const options = opts || {};
+  let text = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!text) throw new Error('Empty response from API');
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenced) text = fenced[1].trim();
+
+  // Reasoning models wrap the answer in prose: take the outermost object.
+  let jsonStr = null;
+  const end = text.lastIndexOf('}');
+  if (end !== -1) {
+    let depth = 0, start = -1;
+    for (let i = end; i >= 0; i--) {
+      if (text[i] === '}') depth++;
+      else if (text[i] === '{') depth--;
+      if (depth === 0) { start = i; break; }
+    }
+    if (start !== -1) jsonStr = text.slice(start, end + 1);
+  }
+  if (jsonStr === null) {
+    if (options.finishReason === 'length') {
+      throw new Error('The LLM reply has no complete JSON object: the model hit its output limit ' +
+        '(finish_reason=length), so the JSON is incomplete. Reply starts with: ' + text.slice(0, 150) + '...');
+    }
+    if (jsonBraceBalance(text) > 0 || text.includes('{')) {
+      throw new Error('The LLM reply stops in the middle of the JSON — truncation is the likely cause ' +
+        '(an output limit or a very long resume). Reply starts with: ' + text.slice(0, 150) + '...');
+    }
+    throw new Error('No JSON object in the LLM reply. Reply starts with: ' + text.slice(0, 150) + '...');
+  }
+
+  let profile;
+  let repaired = false;
+  try {
+    profile = JSON.parse(jsonStr);
+  } catch (e) {
+    try {
+      profile = JSON.parse(repairJsonStructure(jsonStr));
+      repaired = true;
+    } catch (e2) {
+      const balanced = jsonBraceBalance(text) <= 0;
+      const cutOff = options.finishReason === 'length';
+      const why = cutOff
+        ? 'the model hit its output limit (finish_reason=length), so the JSON is incomplete'
+        : balanced
+          ? 'the response is complete but not valid JSON (this is a malformed reply, NOT a truncation)'
+          : 'the reply is incomplete (unbalanced braces) — truncation is the likely cause';
+      throw new Error('Could not read the extracted profile: ' + why + '. First parse error: ' +
+        (e && e.message ? e.message : String(e)) + '. Reply starts with: ' + jsonStr.slice(0, 150) + '...');
+    }
+  }
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+    throw new Error('The LLM reply was not a JSON object (got ' +
+      (Array.isArray(profile) ? 'an array' : typeof profile) + ')');
+  }
+  return {
+    profile: normalizeProfile(profile),
+    missing: missingProfileKeys(profile),
+    repaired: repaired,
+  };
+}
+
+// Parse the llm_extra_headers form input (JSON object string) into a header map,
+// defensively — mirrors LLMClient.parseExtraHeaders in lib/llm-client.js (the
+// options page does not load that file). Invalid JSON / non-objects → {}.
+function parseExtraHeadersFromForm() {
+  const raw = document.getElementById('llm_extra_headers')?.value || '';
+  if (!raw.trim()) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const headers = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const name = String(key).trim();
+    if (name && (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')) {
+      headers[name] = String(value);
+    }
+  }
+  return headers;
+}
+
 // --- Test connection (checks if model + endpoint work) ---
 async function testConnection() {
   const baseUrl = (document.getElementById('llm_base_url').value || '').trim().replace(/\/+$/, '');
@@ -578,7 +836,9 @@ async function testConnection() {
   try {
     const resp = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
+      // Same merge rule as LLMClient.chat(): extras first, explicit headers win.
       headers: {
+        ...parseExtraHeadersFromForm(),
         'Content-Type': 'application/json',
         ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
       },
