@@ -4,7 +4,9 @@
   "description": "AI-powered job application autofiller. Bring your own LLM endpoint.",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:offline": "node test/run_all.mjs",
+    "test:all": "npm test && node test/run_all.mjs"
   },
   "repository": {
     "type": "git",

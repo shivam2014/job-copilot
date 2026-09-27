@@ -13,6 +13,11 @@ const tests = [
   'extraction.mjs',
   'comprehensive.mjs',
   'llm_prompts.mjs',
+  'llm_config.mjs',
+  'answers.mjs',
+  'llm_bridge.mjs',
+  'fill_mapping.mjs',
+  'extraction_parse.mjs',
 ];
 
 let passed = 0;
