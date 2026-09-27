@@ -105,6 +105,12 @@ let detectedFields = null;
 let jcPanel = null;
 let panelWasOpen = false;
 
+// [FIX F] Running totals for the current fill run. Accumulated by the
+// runFillSequence() wrapper and rendered as ONE persistent panel summary.
+let fillStats = {
+  filled: 0, skipped: 0, errors: [], aiFilled: 0, aiTotal: 0, resumeFileStored: null,
+};
+
 // Sync fill state to DOM so external scripts (fill.mjs, fill_section.mjs)
 // can poll via document.documentElement.dataset.jcFilling
 function setFilling(val) {
@@ -134,6 +140,9 @@ const fieldCategoryMap = {
   'address_line_2': 'street_address_2',
   // City
   'city': 'city', 'locality': 'city', 'municipality': 'city',
+  // [FIX G2] "Current location" text inputs (Lever uses name="location") resolve
+  // to the city parsed from profile_address by buildFillMap() — no new parser.
+  'location': 'city', 'current_location': 'city', 'currentLocation': 'city',
   // State
   'region2': 'state', 'state': 'state', 'province': 'state',
   'stateProvince': 'state', 'region': 'state',
@@ -156,7 +165,11 @@ const fieldCategoryMap = {
   'middleNames': 'middle_name', 'middle_name': 'middle_name',
   'fullName': 'full_name', 'full_name': 'full_name',
   // Links
-  'linkedin': 'linkedin', 'siteLink-1': 'linkedin',
+  'linkedin': 'linkedin',
+  // [FIX A] siteLink-1 is Oracle's "Link 1" URL field — it must not be
+  // filled from the LinkedIn URL. Map it to website (blank unless the
+  // profile has a real website URL).
+  'siteLink-1': 'website',
   'github': 'github', 'website': 'website',
   // Employer / Experience
   'employerName': 'employer_name',
@@ -174,6 +187,165 @@ function getFieldCategory(fieldName) {
   return fieldCategoryMap[fieldName] || fieldName;
 }
 
+// ── Fill-scope + learning predicates (Fixes B/C/D) ─────────────────
+// Pure helpers shared by the fill path, the learning path, and
+// test/fill_mapping.mjs (which loads this file in a vm sandbox).
+
+// [FIX B] Keys the stored profile owns. Learning must never persist these:
+// the profile is the source of truth, learning may only cover unknown/custom
+// fields. Checked against the raw field name AND its generic category
+// (e.g. "emailAddress" → "email"), so aliases are covered too.
+const JC_PROFILE_OWNED_KEYS = new Set([
+  'name', 'first_name', 'last_name', 'full_name', 'middle_name',
+  'email', 'phone', 'phone_country_code', 'linkedin', 'github', 'website',
+  'address', 'street_address', 'street_address_2', 'apt_number',
+  'city', 'state', 'postal_code', 'country', 'work_authorization',
+]);
+
+function isProfileOwnedKey(key) {
+  if (!key) return false;
+  return JC_PROFILE_OWNED_KEYS.has(key) || JC_PROFILE_OWNED_KEYS.has(getFieldCategory(key));
+}
+
+// [FIX B2] Merge learned corrections into a fill map. Learned values apply
+// ONLY when the key is not profile-owned and the profile produced no value
+// for it. Single merge path for fillPersonal() and fillSingleField().
+function mergeLearnedCorrections(fillMap, corrections) {
+  for (const [key, val] of Object.entries(corrections || {})) {
+    if (!val) continue;
+    if (isProfileOwnedKey(key)) continue;
+    if (fillMap[key]) continue; // profile value wins
+    fillMap[key] = val;
+  }
+  return fillMap;
+}
+
+// [FIX B2] Value resolution used by the fill paths: field name first, then
+// the generic category (e.g. "addressLine1" → "street_address").
+function resolveFillValue(fillMap, fieldName) {
+  return fillMap[fieldName] || fillMap[getFieldCategory(fieldName)] || '';
+}
+
+// [FIX G2] Some fields keep the detector's fallback name "unknown" (Lever's
+// "Current location" input: the detector has no alias for name="location").
+// Resolve those from the label/attributes to an EXISTING fill-map key — the
+// city parsed by buildFillMap() — no new address parser.
+function resolveLabelBasedValue(field, fillMap) {
+  const el = field && field.el;
+  const text = [
+    field && field.label,
+    el && el.name, el && el.id, el && el.placeholder,
+  ].filter(Boolean).join(' ').toLowerCase();
+  if (!text.trim()) return '';
+  if (/\blocation\b/.test(text) || /\bcity\b/.test(text)) return fillMap.city || '';
+  return '';
+}
+
+// [FIX K2] Resolve a field's fill value: identity → category → label-based.
+// The identity "unknown" is NOT a data key: a learned/garbage fillMap['unknown']
+// entry (created when a DOM-identifier field got learned) must never shadow the
+// real resolution. Live evidence: Lever's "Current location" input (name=
+// "location", detector identity "unknown") was being filled with the poisoned
+// learned value fillMap['unknown'] — the framework rejected it and the panel
+// reported "fill rejected: current location". Label-based resolution maps it to
+// fillMap.city = "Gdansk".
+function resolveFieldValue(field, fillMap) {
+  const name = field && field.name;
+  const category = getFieldCategory(name);
+  const byName = (name && name !== 'unknown') ? fillMap[name] : '';
+  const byCategory = (category && category !== 'unknown') ? fillMap[category] : '';
+  return byName || byCategory || resolveLabelBasedValue(field, fillMap);
+}
+
+// [FIX C3] Technical/hidden inputs must never be filled or learned from.
+function isTechnicalOrHiddenInput(el) {
+  if (!el) return true;
+  const type = (el.type || '').toLowerCase();
+  const text = ((el.name || '') + ' ' + (el.id || '')).toLowerCase();
+  if (type === 'hidden') return true;
+  if (/g-recaptcha-response/.test(text)) return true;
+  if (/csrf/.test(text)) return true;
+  if (/[-_]token$/.test(text.trim())) return true;
+  if (/\b_ga\b/.test(text) || /utm_/.test(text)) return true;
+  if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return true;
+  if (el.getAttribute && el.getAttribute('tabindex') === '-1') return true;
+  if (el.style && (el.style.display === 'none' || el.style.visibility === 'hidden')) return true;
+  if (typeof el.offsetWidth === 'number' && typeof el.offsetHeight === 'number' &&
+      (el.offsetWidth === 0 || el.offsetHeight === 0)) return true;
+  return false;
+}
+
+// [FIX C2] Search/filter UI must never be filled (Oracle P3: the job-search
+// filter box received profile data). Matches the field's own identifiers and
+// any ancestor search/filter/nav container.
+function isSearchOrFilterInput(el) {
+  if (!el) return false;
+  const labelText = (el.labels && el.labels[0] && el.labels[0].textContent) || '';
+  const text = [el.name, el.id, el.placeholder, el.getAttribute ? el.getAttribute('aria-label') : '', labelText]
+    .filter(Boolean).join(' ').toLowerCase();
+  if (/\b(keyword|search|q|query|filter)\b/.test(text)) return true;
+  if (el.closest) {
+    try {
+      if (el.closest('[role="search"], header, nav, [class*="search"], [class*="filter"]')) return true;
+    } catch (e) { /* invalid selector in non-DOM stubs — ignore */ }
+  }
+  return false;
+}
+
+// [FIX C4] The extension's own injected UI (panel, buttons) must never be
+// treated as a form field.
+function isJCInjectedElement(el) {
+  if (!el) return true;
+  if (el.id && String(el.id).indexOf('jc-') === 0) return true;
+  if (el.classList && el.classList.contains('jc-field-fill-btn')) return true;
+  if (el.closest) {
+    try {
+      if (el.closest('#jc-panel, #jc-float-btn, .jc-field-fill-btn')) return true;
+    } catch (e) { /* non-DOM stub — ignore */ }
+  }
+  return false;
+}
+
+// [FIX C] Combined skip predicate for detected fields.
+function shouldSkipDetectedField(field) {
+  const el = field && field.el;
+  if (!el) return true;
+  return isJCInjectedElement(el) || isTechnicalOrHiddenInput(el) || isSearchOrFilterInput(el);
+}
+
+// [FIX C1] Does this page actually contain an application form? True when a
+// resume/cv file input exists, an application container is present, or the
+// page has >= 3 fillable personal fields. Unknown pages → false (fill nothing).
+function pageHasApplicationForm(doc) {
+  const d = doc || document;
+  try {
+    const fileInputs = Array.from(d.querySelectorAll('input[type="file"]') || []);
+    for (const f of fileInputs) {
+      const hint = ((f.name || '') + ' ' + (f.id || '') + ' ' +
+        (f.getAttribute ? (f.getAttribute('aria-label') || '') : '')).toLowerCase();
+      if (!/resume|cv|upload|attach|document/.test(hint)) continue;
+      // A resume-upload widget that lives in the site's search/header/nav
+      // chrome is not an application form (Oracle's "recommended jobs"
+      // upload on the P3 preview/search page). Same container list that
+      // isSearchOrFilterInput() rejects.
+      let inSearchChrome = false;
+      if (f.closest) {
+        try { inSearchChrome = !!f.closest('[role="search"], header, nav, [class*="search"], [class*="filter"]'); }
+        catch (err) { inSearchChrome = false; }
+      }
+      if (!inSearchChrome) return true;
+    }
+    if (d.querySelector('#application-form, #application_form, form[action*="apply"], [class*="application-form"], .apply-flow, [data-automation-id*="apply"]')) return true;
+    const fields = FormDetector.detect();
+    const personal = [...fields.personal, ...fields.selects]
+      .filter(f => !shouldSkipDetectedField(f));
+    return personal.length >= 3;
+  } catch (e) {
+    console.log('JC: pageHasApplicationForm failed:', e.message);
+    return false;
+  }
+}
+
 // ── Global Learning ──────────────────────────────────────────────────
 // Attaches blur listeners to ALL detected text inputs/textareas.
 // When you manually fill a field JC didn't touch (address, street, etc.),
@@ -183,6 +355,9 @@ function attachGlobalLearning() {
   const fields = FormDetector.detect();
   const allFields = [...fields.personal, ...fields.questions, ...fields.selects, ...fields.unknown];
   for (const field of allFields) {
+    // [FIX C] Never learn from search/filter UI, hidden/technical inputs,
+    // or the extension's own injected elements.
+    if (shouldSkipDetectedField(field)) continue;
     const el = field.el;
     if (!el || _learnedEls.has(el)) continue;
     if (el.dataset.jcFilled) continue; // already handled by listenForCorrections
@@ -248,6 +423,9 @@ document.addEventListener('click', function(e) {
 // NO auto-fill — user clicks Fill All when ready.
 async function init() {
   setTimeout(function() {
+    // [FIX B] One-time cleanup of learned_fields poisoned by the old
+    // website→LinkedIn fallback and by learning profile-owned keys.
+    migrateLearnedFieldsOnce();
     detectedFields = FormDetector.detect();
     const totalFields = detectedFields.personal.length +
                         detectedFields.questions.length +
@@ -330,17 +508,31 @@ function createPanel() {
   jcPanel.querySelector('#jc-fill-all').onclick = async () => {
     setFilling(true);
     try {
-      await fillPersonal();
-      await fillExperience();
-      await fillEducation();
-      await fillSkills();
-      await fillLanguages();
-      await fillLicenses();
-      await fillAIQuestions();
-      await fillApplicationQuestions();
-      await fillLearnedRadios();
+      // [FIX C1] Gate the whole fill sequence: when the page has no
+      // application form, fill nothing (Oracle P3 search page).
+      if (!pageHasApplicationForm()) {
+        showStatus('No application form detected on this page', 'info');
+        return;
+      }
+      // [FIX F] One stats wrapper for the whole run → one persistent summary.
+      await runFillSequence(async () => {
+        await fillPersonal();
+        await fillExperience();
+        await fillEducation();
+        await fillSkills();
+        await fillLanguages();
+        await fillLicenses();
+        await fillAIQuestions();
+        await fillApplicationQuestions();
+        await fillLearnedRadios();
+        await reassertClearedFields();
+      });
     } catch (err) {
-      console.error('[JC] Fill All error:', err);
+      // [FIX E3] console.warn — console.error raises an extension-error entry
+      // for recoverable states (AGENTS.md pitfall).
+      console.warn('[JC] Fill All error:', err);
+      fillStats.errors.push(shortLLMError(err.message));
+      renderFillSummary();
     } finally {
       setFilling(false);
     }
@@ -403,6 +595,8 @@ function injectPerFieldButtons() {
 
   for (const field of allFields) {
     if (field.el.type === 'file') continue;
+    // [FIX C] No per-field fill button on non-application targets either.
+    if (shouldSkipDetectedField(field)) continue;
 
     const btn = document.createElement('button');
     btn.className = 'jc-field-fill-btn';
@@ -489,30 +683,63 @@ async function getResumeSection(sectionName) {
 async function fillSingleField(field) {
   const fieldLabel = field.label || field.name || 'field';
 
+  // [FIX C] Refuse non-application targets and pages without a real
+  // application form — never write into search/filter or technical inputs.
+  if (shouldSkipDetectedField(field)) {
+    showStatus('Skipped "' + fieldLabel + '" (not an application field)', 'info');
+    return;
+  }
+  if (!pageHasApplicationForm()) {
+    showStatus('No application form detected on this page', 'info');
+    return;
+  }
+
   // Textarea → call LLM
   if (field.el instanceof HTMLTextAreaElement) {
-  const profile = await chrome.storage.sync.get(['llm_base_url', 'llm_api_key', 'llm_model']);
+  const profile = await chrome.storage.sync.get(['llm_base_url', 'llm_api_key', 'llm_model', 'llm_extra_headers']);
     const resumeText = await getResumeText();
     if (!resumeText) {
       showStatus('No resume — upload PDF in settings first.', 'error');
       makeStatusClickable();
       return;
     }
-    const question = field.label || field.identifiers || 'Answer this question';
+    // [FIX K1] Derive the real question text from the DOM. Never prompt with
+    // the raw DOM name (`cards[uuid][field0]`) — and never write meta-text:
+    // no readable question ⇒ skip, blank field, explicit status.
+    const question = FormDetector.deriveQuestionText(field);
+    if (!question) {
+      showStatus('Skipped "' + fieldLabel + '" (no question text)', 'info');
+      console.warn('JC: fillSingleField — no readable question text for', (field.el && (field.el.name || field.el.id)) || fieldLabel, '— field left blank');
+      return;
+    }
     const jd = extractJobDescription();
     LLMClient.getConfig = async () => ({
       baseUrl: (profile.llm_base_url || 'https://api.openai.com/v1').replace(/\/+$/, ''),
       apiKey: profile.llm_api_key || '',
-      model: profile.llm_model || 'gpt-4o-mini',
+      // [FIX K4] no pinned default — empty surfaces the actionable Settings error
+      model: profile.llm_model || '',
+      extraHeaders: LLMClient.parseExtraHeaders(profile.llm_extra_headers),
     });
     try {
       showStatus('Generating answer...', 'info');
-      const answer = await LLMClient.generateAnswer(question, jd, resumeText);
-      await FormDetector.fillField(field, answer);
-      await saveAnswer(question, answer);
+      fillStats.aiTotal++;
+      // [FIX K1] Output guard: meta-commentary/refusal ⇒ one stricter retry ⇒
+      // still unusable ⇒ blank field, reported as skipped (never written).
+      const result = await LLMClient.generateVerifiedAnswer(question, jd, resumeText);
+      if (!result.answer) {
+        showStatus('Skipped "' + fieldLabel + '" (unusable answer)', 'info');
+        console.warn('JC: fillSingleField — no usable answer for "' + question + '" — field left blank');
+        return;
+      }
+      await FormDetector.fillField(field, result.answer);
+      fillStats.aiFilled++;
+      await saveAnswer(question, result.answer);
       showStatus('Answered!', 'success');
     } catch (err) {
+      fillStats.errors.push(shortLLMError(err.message));
       showStatus('LLM error: ' + err.message, 'error');
+      makeStatusClickable();
+      console.warn('JC: fillSingleField — LLM error for "' + question + '":', err.message);
     }
     return;
   }
@@ -520,14 +747,13 @@ async function fillSingleField(field) {
   // Everything else → fill from profile
   const fillMap = await buildFillMap();
   const learned = await chrome.storage.sync.get('learned_fields');
-  const corrections = learned.learned_fields || {};
-  for (const [key, val] of Object.entries(corrections)) {
-    if (val) fillMap[key] = val;
-  }
+  // [FIX B2] Learned values never override profile values (merge helper).
+  mergeLearnedCorrections(fillMap, learned.learned_fields || {});
 
-  // Also check generic category for the field name
-  const category = getFieldCategory(field.name);
-  const value = fillMap[field.name] || fillMap[category];
+  // [FIX B2] Field name first, then generic category, then label-based
+  // resolution (G2: unnamed fields such as "Current location"). [FIX K2] the
+  // identity "unknown" is not a data key (see resolveFieldValue).
+  const value = resolveFieldValue(field, fillMap);
   if (!value) {
     showStatus('No data for "' + fieldLabel + '"', 'info');
     return;
@@ -549,6 +775,11 @@ async function fillSingleField(field) {
 // Step 2: detect fields on page. Step 4: build value map from storage.
 // Step 5: look up values and fill. Step 8: attach learning listeners.
 async function fillPersonal() {
+  // [FIX C1] No application form on this page → fill nothing.
+  if (!pageHasApplicationForm()) {
+    showStatus('No application form detected on this page', 'info');
+    return;
+  }
   const fields = FormDetector.detect();
   const fillMap = await buildFillMap();
 
@@ -558,6 +789,9 @@ async function fillPersonal() {
     makeStatusClickable();
     return;
   }
+
+  // [FIX G2] Fields with no recognizable name are included when their LABEL
+  // resolves to a fill-map value (e.g. Lever "Current location" → city).
 
   // [FIX] Smart phone: if form has a separate phone_country_code field,
   // strip the country code prefix from the phone value so each field gets
@@ -574,18 +808,20 @@ async function fillPersonal() {
   }
 
   const learned = await chrome.storage.sync.get('learned_fields');
-  const corrections = learned.learned_fields || {};
-  for (const [key, val] of Object.entries(corrections)) {
-    if (val) fillMap[key] = val;
-  }
+  // [FIX B2] Profile values win; learned corrections only fill the gaps.
+  mergeLearnedCorrections(fillMap, learned.learned_fields || {});
 
   // Step 5: for each detected field, look up its value in the fill map.
   // fillMap keys match field.name because buildFillMap() uses the same
   // names that FormDetector.identify() returns (first_name, email, etc.)
   let filled = 0;
   const filledEls = [];
-  const allFields = [...fields.personal, ...fields.selects]
-    .filter(f => f.name !== 'employer_name' && f.name !== 'company_name');
+  const labelResolved = fields.unknown.filter(f => resolveLabelBasedValue(f, fillMap) !== '');
+  const allFields = [...fields.personal, ...fields.selects, ...labelResolved]
+    .filter(f => f.name !== 'employer_name' && f.name !== 'company_name')
+    // [FIX C2/C3/C4] Skip search/filter UI, hidden/technical inputs, and
+    // the extension's own injected elements.
+    .filter(f => !shouldSkipDetectedField(f));
   // Sort: text inputs first, then comboboxes, then selects last
   // Prevents country/state combobox re-render from invalidating text field refs
   allFields.sort((a, b) => {
@@ -596,8 +832,8 @@ async function fillPersonal() {
     return aText - bText;
   });
   for (const field of allFields) {
-    const category = getFieldCategory(field.name);
-    const value = fillMap[field.name] || fillMap[category]; // Step 5: lookup by field identity + category
+    // [FIX K2] 'unknown' cannot shadow label-based resolution (resolveFieldValue)
+    const value = resolveFieldValue(field, fillMap); // Step 5: lookup by field identity + category + label
     if (value && !skipFieldForType(field, value)) {
       const ok = await FormDetector.fillField(field, value);
       if (ok) { filled++; filledEls.push(field.el); }
@@ -613,8 +849,7 @@ async function fillPersonal() {
     for (const field of recheckFields) {
       // Skip if already has value
       if (field.el.value && field.el.value.trim().length > 0) continue;
-      const category = getFieldCategory(field.name);
-      const value = fillMap[field.name] || fillMap[category];
+      const value = resolveFieldValue(field, fillMap);
       if (value && !skipFieldForType(field, value)) {
         const ok = await FormDetector.fillField(field, value);
         if (ok) { filled++; filledEls.push(field.el); }
@@ -632,23 +867,53 @@ async function fillPersonal() {
   }
 }
 
+// [FIX K2] Final re-assert pass. Some widgets (live case: Lever's location
+// autocomplete, input[name=location]) clear a programmatically committed value
+// when focus moves to a later field — the AI textarea fill right after left
+// "Gdansk" empty in the final dump. After all phases, re-detect and re-fill
+// fields that are EMPTY but have a resolvable value. Bounded: one pass,
+// personal + label-resolved fields only, non-empty fields are untouched.
+async function reassertClearedFields() {
+  if (!pageHasApplicationForm()) return;
+  const fields = FormDetector.detect();
+  const fillMap = await buildFillMap();
+  const learned = await chrome.storage.sync.get('learned_fields');
+  mergeLearnedCorrections(fillMap, learned.learned_fields || {});
+  const candidates = [...fields.personal, ...fields.unknown.filter(f => resolveLabelBasedValue(f, fillMap) !== '')]
+    .filter(f => f.name !== 'employer_name' && f.name !== 'company_name')
+    .filter(f => !shouldSkipDetectedField(f))
+    .filter(f => !(f.el.value && f.el.value.trim().length > 0));
+  let refilled = 0;
+  for (const field of candidates) {
+    const value = resolveFieldValue(field, fillMap);
+    if (!value || skipFieldForType(field, value)) continue;
+    const ok = await FormDetector.fillField(field, value);
+    if (ok) refilled++;
+  }
+  if (refilled > 0) console.log('JC: re-asserted ' + refilled + ' field(s) cleared by late focus changes');
+}
+
 // ── Fill All — AI Questions (Steps 9-10) ───────────────────────────
 // Step 9: get resume text from storage, scrape job description from page.
 // For each textarea, call the LLM (Step 10) and fill the answer.
 async function fillAIQuestions() {
   const profile = await chrome.storage.sync.get([
-    'llm_base_url', 'llm_api_key', 'llm_model', 'profile_name',
+    'llm_base_url', 'llm_api_key', 'llm_model', 'llm_extra_headers', 'profile_name',
   ]);
 
-  // Skip silently if LLM not configured
+  // No LLM configured — surface it in the panel instead of failing silently
   if (!profile.llm_base_url && !profile.llm_api_key) {
-    console.log('JC: fillAIQuestions — no LLM configured, skipping');
+    fillStats.errors.push('no LLM configured');
+    showStatus('AI answers: no LLM configured — open Settings', 'error');
+    makeStatusClickable();
+    console.warn('JC: fillAIQuestions — no LLM configured (llm_base_url/llm_api_key empty). Open Settings to configure the AI engine.');
     return;
   }
 
   const resumeText = await getResumeText();
 
   if (!resumeText) {
+    fillStats.errors.push('no resume stored');
     showStatus('No resume — upload PDF in settings first.', 'error');
     makeStatusClickable();
     return;
@@ -656,22 +921,48 @@ async function fillAIQuestions() {
 
   const fields = FormDetector.detect();
   const questions = fields.questions;
-  if (questions.length === 0) return;
+  if (questions.length === 0) {
+    showStatus('AI answers: no questions found on this page', 'info');
+    return;
+  }
 
   let jobDescription = extractJobDescription();
   showStatus('Generating ' + questions.length + ' answer(s)...', 'info');
+  fillStats.aiTotal = questions.length;
 
   let filled = 0;
+  let skippedNoText = 0;
+  let skippedUnusable = 0;
+  const failures = [];
   for (const field of questions) {
     try {
-      const question = field.label || field.identifiers || 'Answer this question';
+      // [FIX K1] Question text comes from the DOM derivation (label chain /
+      // aria-* / container heading), never from field.label's identifier
+      // fallback. Nothing readable ⇒ no LLM call, nothing written, counted as
+      // skipped. Blank is correct; nonsense is not.
+      const question = field.questionText || FormDetector.deriveQuestionText(field);
+      if (!question || FormDetector.isDomIdentifier(question, field)) {
+        skippedNoText++;
+        console.warn('JC: skipping question field (no question text):', (field.el && (field.el.name || field.el.id)) || '(unnamed)');
+        continue;
+      }
       LLMClient.getConfig = async () => ({
         baseUrl: (profile.llm_base_url || 'https://api.openai.com/v1').replace(/\/+$/, ''),
         apiKey: profile.llm_api_key || '',
-        model: profile.llm_model || 'gpt-4o-mini',
+        // [FIX K4] no pinned default — empty surfaces the actionable Settings error
+        model: profile.llm_model || '',
+        extraHeaders: LLMClient.parseExtraHeaders(profile.llm_extra_headers),
       });
 
-      const answer = await LLMClient.generateAnswer(question, jobDescription, resumeText);
+      // [FIX K1] Output guard: meta-commentary/refusal ⇒ one stricter retry ⇒
+      // still unusable ⇒ leave blank and report the skip.
+      const result = await LLMClient.generateVerifiedAnswer(question, jobDescription, resumeText);
+      if (!result.answer) {
+        skippedUnusable++;
+        console.warn('JC: no usable answer for "' + question + '" — field left blank');
+        continue;
+      }
+      const answer = result.answer;
       await FormDetector.fillField(field, answer);
 
       try {
@@ -685,14 +976,38 @@ async function fillAIQuestions() {
         }
       } catch(e) {}
 
-      await saveAnswer(field.label || field.identifiers, answer);
+      await saveAnswer(question, answer);
       filled++;
+      fillStats.aiFilled++;
     } catch (err) {
+      failures.push((field.label || field.identifiers || 'question') + ': ' + err.message);
+      fillStats.errors.push(shortLLMError(err.message));
       console.log('JC: LLM error for field:', field.label, err.message);
     }
   }
 
-  showStatus('Filled ' + filled + '/' + questions.length + ' question(s)', filled > 0 ? 'success' : 'error');
+  // Actionable panel summary; the status element clears after 5s, so the full
+  // per-question detail is also mirrored to console.warn.
+  const failedNote = failures.length
+    ? ', ' + failures.length + ' failed (' + shortLLMError(failures[0]) + ')'
+    : '';
+  const skipNote = (skippedNoText ? ', ' + skippedNoText + ' skipped (no question text)' : '') +
+                   (skippedUnusable ? ', ' + skippedUnusable + ' skipped (unusable answer)' : '');
+  const statusClass = filled > 0 ? 'success' : ((skippedNoText + skippedUnusable) > 0 ? 'info' : 'error');
+  showStatus('AI answers: ' + filled + '/' + questions.length + ' filled' + skipNote + failedNote, statusClass);
+  if (failures.length) {
+    console.warn('JC: fillAIQuestions — ' + failures.length + '/' + questions.length + ' answer(s) failed:\n' + failures.join('\n'));
+  }
+}
+
+// Short reason for the panel summary (full detail goes to console.warn).
+// Gateway errors carry a machine-readable "type" (e.g. MissingSessionID);
+// otherwise trim the message to something readable.
+function shortLLMError(message) {
+  const m = /"type"\s*:\s*"([^"]+)"/.exec(message || '');
+  if (m) return m[1];
+  const s = String(message || 'error').replace(/\s+/g, ' ').trim();
+  return s.length > 40 ? s.slice(0, 40) + '…' : s;
 }
 
 // ── Fill Learned Radios (Step 11) ──────────────────────────────────
@@ -736,7 +1051,7 @@ async function fillLearnedRadios() {
     }
     if (filled > 0) console.log('JC: Filled ' + filled + ' radio question(s) from learned answers');
   } catch(e) {
-    console.error('JC: Error filling radios:', e);
+    console.warn('JC: Error filling radios:', e);
   }
 
   // --- Oracle CX Pill Button handling ---
@@ -962,33 +1277,11 @@ async function fillExperience() {
       }
     }
 
-    // Fill Employer Country — use char-by-char
-    const allCountries = document.querySelectorAll('input[id*="countryCode"]');
-    const empCountry = allCountries.length > 0 ? allCountries[allCountries.length - 1] : null;
-    if (empCountry) {
-      const cityCountryMap = {
-        'linz': 'Austria', 'toulouse': 'France', 'krakow': 'Poland',
-        'gdansk': 'Poland', 'warsaw': 'Poland', 'paris': 'France',
-        'london': 'United Kingdom', 'munich': 'Germany',
-        'berlin': 'Germany', 'hamburg': 'Germany', 'amsterdam': 'Netherlands',
-        'dublin': 'Ireland', 'madrid': 'Spain', 'barcelona': 'Spain',
-        'rome': 'Italy', 'milan': 'Italy', 'zurich': 'Switzerland',
-        'vienna': 'Austria', 'brussels': 'Belgium', 'stockholm': 'Sweden',
-        'copenhagen': 'Denmark', 'oslo': 'Norway', 'helsinki': 'Finland',
-        'bangalore': 'India', 'hyderabad': 'India', 'mumbai': 'India',
-        'pune': 'India', 'delhi': 'India', 'chennai': 'India',
-        'new york': 'United States', 'san francisco': 'United States',
-        'seattle': 'United States', 'austin': 'United States',
-        'chicago': 'United States', 'boston': 'United States',
-        'los angeles': 'United States', 'toronto': 'Canada',
-        'montreal': 'Canada', 'vancouver': 'Canada',
-        'tokyo': 'Japan', 'singapore': 'Singapore',
-        'sydney': 'Australia', 'melbourne': 'Australia',
-        'dubai': 'United Arab Emirates', 'tel aviv': 'Israel',
-      };
-      const country = cityCountryMap[(exp.city || '').toLowerCase()] || '';
-      if (country) { const field = { el: empCountry, name: "country", label: "Employer Country" }; await FormDetector.fillField(field, country); }
-    }
+    // [FIX D] Removed the hardcoded city→country map that inferred Employer
+    // Country from the employer city (e.g. "gdansk" → "Poland"). Country is
+    // never inferred from a city name; this field stays blank unless the
+    // resume data states the country explicitly (the experience schema does
+    // not carry a country field, so it stays blank).
 
     // Fill Employer City — find the LAST one
     const allCities = document.querySelectorAll('input[name="employerCity"]');
@@ -1554,6 +1847,24 @@ async function fillLicenses() {
 
 // ── Shared Helpers ─────────────────────────────────────────────────
 
+// [FIX K2] Country names used to disambiguate a two-part address
+// ("Gdansk, Poland" is City, Country — not Street, City). Kept as an explicit
+// list so no city→country inference happens anywhere else ([FIX D] above).
+const JC_COUNTRY_NAMES = new Set([
+  'poland', 'germany', 'france', 'spain', 'italy', 'netherlands', 'belgium',
+  'portugal', 'austria', 'switzerland', 'sweden', 'norway', 'denmark',
+  'finland', 'ireland', 'united kingdom', 'uk', 'great britain',
+  'czech republic', 'czechia', 'slovakia', 'slovenia', 'hungary', 'romania',
+  'bulgaria', 'croatia', 'estonia', 'latvia', 'lithuania', 'ukraine', 'greece',
+  'turkey', 'united states', 'usa', 'canada', 'mexico', 'brazil', 'argentina',
+  'chile', 'india', 'china', 'japan', 'south korea', 'korea', 'singapore',
+  'australia', 'new zealand', 'south africa', 'israel', 'uae',
+  'united arab emirates',
+]);
+function isCountryName(s) {
+  return JC_COUNTRY_NAMES.has(String(s || '').trim().toLowerCase());
+}
+
 // Step 4: build a value dictionary from your stored profile data.
 // Reads raw values from Chrome storage (set when you extracted your resume),
 // splits composite values (full name → first+last, address → street+city+country),
@@ -1592,8 +1903,7 @@ async function buildFillMap() {
   // Recompute indices after potential splice
   const postalIdx = addrParts.findIndex(p => postalCodePattern.test(p));
   const isPostalCode = postalIdx >= 0;
-  const lastPart = addrParts[addrParts.length - 1] || '';
-  const isLastPartCountry = lastPart && !postalCodePattern.test(lastPart) && lastPart.length > 3 && addrParts.length > 1;
+  const hasProfileAddress = addrParts.length > 0;
 
   let parseAddr = '';
   let parseAddr2 = '';
@@ -1605,34 +1915,54 @@ async function buildFillMap() {
   } else if (addrParts.length === 1) {
     parseAddr = addrParts[0]; // Single value → street
   } else if (addrParts.length === 2) {
-    // "Street, City" or "City, Country"
-    parseAddr = addrParts[0];
-    parseCity = addrParts[1];
+    // "Street, City" or "City, Country" — [FIX K2] live case: profile_address
+    // "Gdansk, Poland" used to parse as city="Poland", street="Gdansk", so
+    // Lever's location widget was handed "Poland" and rejected the fill.
+    if (isCountryName(addrParts[1])) {
+      parseCity = addrParts[0];
+    } else {
+      parseAddr = addrParts[0];
+      parseCity = addrParts[1];
+    }
   } else if (isPostalCode && postalIdx === addrParts.length - 2) {
     // "Street, City, PostalCode" pattern
     parseAddr = addrParts[0];
     parseCity = addrParts[1];
     parsePostal = addrParts[postalIdx];
-  } else if (isLastPartCountry) {
-    // "Street, City, PostalCode, Country" pattern (apartment already extracted)
+  } else if (postalIdx >= 0) {
+    // "Street, City, PostalCode, [Country]" — postal code present at any
+    // position other than the second-to-last slot handled above.
     parseAddr = addrParts[0];
     parseCity = addrParts.length >= 3 ? addrParts[1] : addrParts[0];
-    parsePostal = postalIdx >= 0 ? addrParts[postalIdx] : '';
+    parsePostal = addrParts[postalIdx];
   } else {
-    // Fallback: first part is street, second is city
-    parseAddr = addrParts[0];
-    parseCity = addrParts.length >= 3 ? addrParts[1] : addrParts[0];
+    // Fallback: first part is street, second is city. [FIX K2] When the LAST
+    // part is a country name ("City, Region, Country"), the city is the first
+    // part — never the region/country.
+    if (isCountryName(addrParts[addrParts.length - 1])) {
+      parseCity = addrParts[0];
+    } else {
+      parseAddr = addrParts[0];
+      parseCity = addrParts.length >= 3 ? addrParts[1] : addrParts[0];
+    }
     parsePostal = postalIdx >= 0 ? addrParts[postalIdx] : '';
   }
   // Cache: parse resume_full_data once for extractedFields fallbacks
   let extracted = {};
   try { extracted = JSON.parse(profile.resume_full_data || '{}').extractedFields || {}; } catch {}
-  let parseCountry = isLastPartCountry ? lastPart : (extracted.country || '');
 
-  // If country looks like a postal code and postal is empty, swap them
-  if (!parsePostal && parseCountry && postalCodePattern.test(parseCountry)) {
-    parsePostal = parseCountry;
-    parseCountry = extracted.country || '';
+  // [FIX D] State/country are used ONLY when profile_address explicitly
+  // contains them: a component that matches the resume-extracted value, or
+  // (country only) an explicit two-letter code. No city→country inference —
+  // "Gdansk" never implies "Poland".
+  let parseState = '';
+  let parseCountry = '';
+  if (hasProfileAddress) {
+    for (const part of addrParts) {
+      if (!parseState && extracted.state && part.toLowerCase() === String(extracted.state).toLowerCase()) parseState = part;
+      if (!parseCountry && extracted.country && part.toLowerCase() === String(extracted.country).toLowerCase()) parseCountry = part;
+      if (!parseCountry && /^[A-Z]{2}$/.test(part)) parseCountry = part;
+    }
   }
 
   return {
@@ -1656,20 +1986,23 @@ async function buildFillMap() {
     phone: (profile.profile_phone || '').trim(),
     linkedin: profile.profile_linkedin,
     github: profile.profile_github,
-    // [FIX] Use LinkedIn as website fallback for "Link 1" fields.
-    // Oracle CX has siteLink-1 (type=url) for supporting documents.
-    // If profile_website is empty, use linkedin URL so the field gets filled.
-    website: profile.profile_website || profile.profile_linkedin || '',
+    // [FIX A] Website/portfolio/urls[Portfolio]/urls[Other] are filled ONLY
+    // from a real profile_website value. Empty profile_website → blank field.
+    // No cross-field URL fallbacks (the old LinkedIn fallback misfilled P1/P2).
+    website: (profile.profile_website || '').trim(),
     address: addrParts.length >= 3 ? '' : address,
-    street_address: parseAddr || extracted.street_address || '',
-    street_address_2: parseAddr2 || apartmentNumber || extracted.street_address_2 || '',
+    // [FIX D] When a stored address exists it is the ONLY source for address
+    // components (profile = source of truth). street/city/postal fall back to
+    // resume-extracted values only when there is no stored address at all.
+    // state/country never fall back — P2 showed extracted.country ("Poland")
+    // leaking into a form although the stored address had no country.
+    street_address: hasProfileAddress ? (parseAddr || '') : (extracted.street_address || ''),
+    street_address_2: hasProfileAddress ? (apartmentNumber || parseAddr2 || '') : (apartmentNumber || extracted.street_address_2 || ''),
     apt_number: '',
-    city: parseCity || extracted.city || '',
-    state: extracted.state || '',
-    postal_code: parsePostal || extracted.postal_code || '',
-    // [FIX] Country fallback from resume data when profile_address is empty.
-    // Resume extraction stores country in extractedFields.country (e.g., "Poland").
-    country: parseCountry || extracted.country || '',
+    city: hasProfileAddress ? (parseCity || '') : (extracted.city || ''),
+    state: parseState,
+    postal_code: hasProfileAddress ? (parsePostal || '') : (extracted.postal_code || ''),
+    country: parseCountry,
     work_authorization: profile.profile_work_authorization,
   };
 }
@@ -1677,7 +2010,7 @@ async function buildFillMap() {
 // Guard: skip filling a field if the value doesn't match the field type.
 // For example, don't put a phone number into a URL field, don't put a full
 // address into a city field. Returns true to skip, false to proceed.
-function skipFieldForType(field, value) {
+function skipFieldForTypeCore(field, value) {
   // [FIX] Allow URL fields to accept values without http prefix.
   // The linkedin/github URLs from profile may or may not have https://.
   // Also allow phone_country_code values (like "+33") through — they're
@@ -1697,6 +2030,14 @@ function skipFieldForType(field, value) {
   if (field.name === 'postal_code' && (value.length < 3 || /^[a-zA-Z\s]{3,}$/.test(value))) return true;
   if (field.name === 'state' && value.length > 20) return true;
   return false;
+}
+
+// [FIX F] Counting wrapper: the core predicate stays pure; the wrapper only
+// records type-mismatch skips for the fill summary.
+function skipFieldForType(field, value) {
+  const skip = skipFieldForTypeCore(field, value);
+  if (skip) fillStats.skipped++;
+  return skip;
 }
 
 // ── Learning System ────────────────────────────────��──────────────
@@ -1747,6 +2088,14 @@ function listenForCorrections(filledEls) {
 // Saves under both the portal-specific key AND the generic category,
 // so the same learning works across Oracle CX, Workday, Greenhouse, etc.
 async function saveLearnedCorrection(fieldName, value) {
+  // [FIX B1] The profile owns these keys — never persist learned values for
+  // them. Learning only covers unknown/custom fields. Checked on the raw
+  // field name AND its generic category (e.g. "emailAddress" → "email").
+  if (!fieldName || !value) return;
+  if (isProfileOwnedKey(fieldName)) {
+    console.log('JC: Refused to learn "' + fieldName + '" — profile owns this field');
+    return;
+  }
   try {
     const result = await chrome.storage.sync.get('learned_fields');
     const fields = result.learned_fields || {};
@@ -1759,6 +2108,32 @@ async function saveLearnedCorrection(fieldName, value) {
     await chrome.storage.sync.set({ learned_fields: fields });
   } catch(e) {
     console.log('JC: Failed to save learned correction:', e.message);
+  }
+}
+
+// [FIX B] One-time migration: remove learned_fields entries that the profile
+// owns and any entry whose value is just the LinkedIn URL (the old
+// website→LinkedIn misfill). Guarded by a storage flag so it runs once.
+async function migrateLearnedFieldsOnce() {
+  try {
+    const flags = await chrome.storage.sync.get(['jc_learned_migration_v1', 'profile_linkedin']);
+    if (flags.jc_learned_migration_v1) return;
+    const res = await chrome.storage.sync.get('learned_fields');
+    const learned = res.learned_fields || {};
+    const linkedin = String(flags.profile_linkedin || '').trim();
+    const removed = [];
+    const kept = {};
+    for (const [key, val] of Object.entries(learned)) {
+      const owned = isProfileOwnedKey(key);
+      const copiesLinkedin = !!linkedin && typeof val === 'string' && val.trim() === linkedin;
+      if (owned || copiesLinkedin) removed.push(key); else kept[key] = val;
+    }
+    if (removed.length) await chrome.storage.sync.set({ learned_fields: kept });
+    await chrome.storage.sync.set({ jc_learned_migration_v1: true });
+    console.log('JC: learned_fields migration v1 — removed ' + removed.length + ' key(s)' +
+      (removed.length ? ': ' + removed.join(', ') : ''));
+  } catch (e) {
+    console.log('JC: learned_fields migration failed:', e.message);
   }
 }
 
@@ -1916,17 +2291,100 @@ function extractJobDescription() {
 }
 
 // ── Status Messages ─────────────────────────────────────────────
-// Shows a temporary message in the panel (e.g., "Filled 5 field(s)").
-// Messages auto-clear after 5 seconds. makeStatusClickable() turns the
-// message into a link that opens the extension settings page — used when
-// the error is "No resume" so the user can upload one.
+// Shows a message in the panel (e.g., "Filled 5 field(s)"). Plain messages
+// auto-clear after 15 s; fill summaries pass {persist:true} and stay until
+// the next status. makeStatusClickable() turns the message into a link that
+// opens the extension settings page — used when the error is "No resume" so
+// the user can upload one.
 
-function showStatus(msg, type) {
+let statusClearTimer = null;
+
+function showStatus(msg, type, opts) {
   const el = document.getElementById('jc-status-msg');
-  if (!el) return;
+  if (!el) {
+    // [FIX F] Degrade gracefully on pages without the panel element.
+    console.warn('JC: #jc-status-msg not found — status not shown: ' + msg);
+    return;
+  }
+  if (statusClearTimer) { clearTimeout(statusClearTimer); statusClearTimer = null; }
   el.className = 'jc-status ' + type;
   el.textContent = msg;
-  setTimeout(function() { el.textContent = ''; el.className = 'jc-status'; }, 5000);
+  if (opts && opts.persist) return;
+  const ms = (opts && opts.ms) || 15000;
+  statusClearTimer = setTimeout(function() { el.textContent = ''; el.className = 'jc-status'; statusClearTimer = null; }, ms);
+}
+
+// ── [FIX F] Fill statistics + one persistent summary ───────────────
+// Fill All / section fill / AI questions run inside runFillSequence(), which
+// records every FormDetector.fillField() outcome and renders a single
+// persistent summary like: "Filled 12 fields (3 skipped) · AI answers 2/3 · 1 error (Failed to fetch)".
+// [FIX G1] Resume FILE bytes are never stored (checked keys: resume_file,
+// resume_data, resume_pdf, resume_base64, resume_blob — only resume_full_data
+// TEXT exists), so file inputs are reported, never fabricated.
+const RESUME_FILE_KEYS = ['resume_file', 'resume_data', 'resume_pdf', 'resume_base64', 'resume_blob'];
+
+async function hasStoredResumeFile() {
+  try {
+    const res = await chrome.storage.sync.get(RESUME_FILE_KEYS);
+    return RESUME_FILE_KEYS.some(k => !!(res && res[k]));
+  } catch (e) {
+    return null; // unknown — claim nothing in the summary
+  }
+}
+
+function resetFillStats() {
+  fillStats.filled = 0;
+  fillStats.skipped = 0;
+  fillStats.errors = [];
+  fillStats.aiFilled = 0;
+  fillStats.aiTotal = 0;
+  fillStats.resumeFileStored = null;
+}
+
+function renderFillSummary() {
+  const s = fillStats;
+  let msg = 'Filled ' + s.filled + ' field' + (s.filled === 1 ? '' : 's');
+  if (s.skipped > 0) msg += ' (' + s.skipped + ' skipped)';
+  if (s.aiTotal > 0) msg += ' · AI answers ' + s.aiFilled + '/' + s.aiTotal;
+  if (s.errors.length) {
+    const reasons = [...new Set(s.errors.map(shortLLMError))].slice(0, 2).join(', ');
+    msg += ' · ' + s.errors.length + ' error' + (s.errors.length === 1 ? '' : 's') + ' (' + reasons + ')';
+  }
+  // [FIX G1] File bytes are not stored, so they cannot be attached — say so.
+  const hasFileInput = (detectedFields && detectedFields.files && detectedFields.files.length > 0) ||
+    document.querySelectorAll('input[type=file]').length > 0;
+  if (s.resumeFileStored === false && hasFileInput) {
+    msg += ' · resume file not attached (no resume file stored — upload in Settings)';
+  }
+  showStatus(msg, s.errors.length ? 'error' : 'success', { persist: true });
+}
+
+// Run a whole fill sequence with stats and one summary at the end. The
+// FormDetector.fillField wrapper is always restored (finally), even on throw.
+async function runFillSequence(run) {
+  resetFillStats();
+  fillStats.resumeFileStored = await hasStoredResumeFile();
+  // [FIX F] Refresh detection so the summary can report file inputs.
+  try { detectedFields = FormDetector.detect(); } catch (e) { /* keep previous detection */ }
+  const originalFillField = FormDetector.fillField;
+  FormDetector.fillField = async function(field, value) {
+    let ok = false;
+    try {
+      ok = await originalFillField.call(FormDetector, field, value);
+    } catch (err) {
+      fillStats.errors.push(shortLLMError(err.message));
+      throw err;
+    }
+    if (ok) fillStats.filled++;
+    else fillStats.errors.push(shortLLMError('fill rejected: ' + (field.label || field.name || 'field')));
+    return ok;
+  };
+  try {
+    return await run();
+  } finally {
+    FormDetector.fillField = originalFillField;
+    renderFillSummary();
+  }
 }
 
 function makeStatusClickable() {
@@ -1976,17 +2434,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     setFilling(true);
     (async () => {
       try {
-        await fillPersonal();
-        await fillExperience();
-        await fillEducation();
-        await fillSkills();
-        await fillLanguages();
-        await fillLicenses();
-        await fillAIQuestions();
-        await fillApplicationQuestions();
-        await fillLearnedRadios();
+        await runFillSequence(async () => {
+          await fillPersonal();
+          await fillExperience();
+          await fillEducation();
+          await fillSkills();
+          await fillLanguages();
+          await fillLicenses();
+          await fillAIQuestions();
+          await fillApplicationQuestions();
+          await fillLearnedRadios();
+        });
       } catch (err) {
-        console.error('[JC] Fill All message error:', err);
+        console.warn('[JC] Fill All message error:', err);
       } finally {
         setFilling(false);
       }
@@ -2017,7 +2477,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     setFilling(true);
     (async () => {
       try {
-        await fn();
+        await runFillSequence(() => fn());
         sendResponse({ ok: true, section });
       } catch (e) {
         sendResponse({ ok: false, error: e.message, section });

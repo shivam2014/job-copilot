@@ -194,8 +194,19 @@ const FormDetector = {
     const inputs = document.querySelectorAll('input, textarea, select');
 
     inputs.forEach(el => {
+      // [FIX C3] Never emit technical/hidden/search UI elements as fields —
+      // Greenhouse's g-recaptcha-response textarea was queued as an AI
+      // question. shouldSkipDetectedField() lives in content.js (same global
+      // scope); the typeof guard keeps this engine usable standalone.
+      if (typeof shouldSkipDetectedField === 'function' && shouldSkipDetectedField({ el })) return;
       const field = this.identify(el);
       if (!field) return;
+
+      // [FIX K1] Derive the human-readable question text for textareas BEFORE
+      // any prompt is built. '' is meaningful: content.js skips those fields
+      // (blank field, counted as "skipped (no question text)") instead of
+      // prompting the LLM with a DOM identifier.
+      if (el instanceof HTMLTextAreaElement) field.questionText = this.deriveQuestionText(field);
 
       if (el instanceof HTMLTextAreaElement) {
         // Check if it's a known personal field or custom question
@@ -415,6 +426,169 @@ const FormDetector = {
     return el.closest('.apply-flow, .cx-select, [class*="oj-"]') !== null;
   },
 
+  // ── Bug K1: derive the REAL question text for a field ──────────────
+  // A custom question textarea often has no <label>; its DOM name is a DOM
+  // identifier (`cards[uuid][field0]`). Prompting the LLM with that identifier
+  // made it answer meta-text about the prompt, which then got written into the
+  // form. Sources tried, in order:
+  //   1. aria-labelledby → target elements' text
+  //   2. aria-label, placeholder
+  //   3. el.labels / label[for=id]
+  //   4. the ancestor chain (6 levels): heading-like descendants
+  //      (label, legend, h1-h6, [class*=label|title|prompt]) that do not
+  //      contain the field itself. On Lever this is
+  //      `.application-question > .application-question__title`.
+  //   5. first non-empty text node of the nearest container
+  //   6. previous siblings (up to 3, text-only, < 300 chars)
+  // Returns '' when nothing human-readable exists. The caller MUST skip then.
+  deriveQuestionText(field) {
+    const el = field && field.el;
+    if (!el) return '';
+    const candidates = [];
+
+    // 1) aria-labelledby
+    const labelledBy = el.getAttribute ? el.getAttribute('aria-labelledby') : null;
+    if (labelledBy && typeof document !== 'undefined') {
+      for (const tid of String(labelledBy).split(/\s+/)) {
+        const t = tid && document.getElementById(tid);
+        if (t && t.textContent) candidates.push(t.textContent);
+      }
+    }
+    // 2) aria-label + placeholder
+    if (el.getAttribute) { const al = el.getAttribute('aria-label'); if (al) candidates.push(al); }
+    if (el.placeholder) candidates.push(el.placeholder);
+    // 3) native label wiring
+    if (el.labels && el.labels.length) candidates.push(el.labels[0].textContent);
+    if (el.id && typeof document !== 'undefined') {
+      const lbl = document.querySelector('label[for="' + el.id + '"]');
+      if (lbl) candidates.push(lbl.textContent);
+    }
+
+    const HEADING_SELECTOR = 'label, legend, h1, h2, h3, h4, h5, h6, .label, [class*="label"], [class*="title"], [class*="prompt"]';
+    // 4) ancestor chain, max 6 levels
+    const ancestors = [];
+    let node = el.parentElement;
+    const body = (typeof document !== 'undefined' && document.body) ? document.body : null;
+    while (node && node !== body && ancestors.length < 6) { ancestors.push(node); node = node.parentElement; }
+    for (const box of ancestors) {
+      if (!box.querySelectorAll) continue;
+      let heads = [];
+      try { heads = Array.from(box.querySelectorAll(HEADING_SELECTOR)); } catch (e) { heads = []; }
+      for (const h of heads) {
+        if (h === el) continue;
+        if (h.contains && h.contains(el)) continue; // enclosing wrapper, not the question text
+        const txt = (h.textContent || '').trim();
+        if (txt) candidates.push(txt);
+      }
+    }
+    // 5) first non-empty direct text node of the nearest container
+    if (ancestors.length && ancestors[0].childNodes) {
+      for (const n of Array.from(ancestors[0].childNodes)) {
+        if (n.nodeType === 3 && n.textContent && n.textContent.trim()) { candidates.push(n.textContent); break; }
+      }
+    }
+    // 6) previous siblings, text only
+    let prev = el.previousElementSibling; let tries = 0;
+    while (prev && tries < 3) {
+      const txt = (prev.textContent || '').trim();
+      if (txt && txt.length < 300 && !(prev.querySelector && prev.querySelector('input, textarea, select'))) candidates.push(txt);
+      prev = prev.previousElementSibling; tries++;
+    }
+
+    for (const raw of candidates) {
+      const clean = this.sanitizeQuestionText(raw, field);
+      if (!clean) continue;
+      if (this.isDomIdentifier(clean, field)) continue;
+      // Must look like a question: >= 2 words, or contains '?'.
+      if (!/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(clean) && !/\?/.test(clean)) continue;
+      return clean;
+    }
+    return '';
+  },
+
+  // Sanitize a raw label candidate: strip the field's own DOM name/id, any
+  // residual `cards[...]`/`[field0]` identifiers, a leading "Question:", then
+  // collapse whitespace and cap at 300 chars.
+  sanitizeQuestionText(raw, field) {
+    let t = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+    if (!t) return '';
+    const el = (field && field.el) || null;
+    if (el) {
+      const name = (el.name || '').trim();
+      const id = (el.id || '').trim();
+      if (name) t = t.split(name).join(' ');
+      if (id) t = t.split(id).join(' ');
+    }
+    t = t.replace(/\bcards\[[^\]]*\](\[[^\]]*\])?/gi, ' ');
+    t = t.replace(/\[field\d*\]/gi, ' ');
+    t = t.replace(/^\s*(question|prompt)\s*[:\-—]\s*/i, '');
+    // Lever appends its required marker (✱) to the question text — drop it.
+    t = t.replace(/[\s\u2731*]+$/g, '');
+    t = t.replace(/\s+/g, ' ').trim();
+    if (t.length > 300) {
+      const cut = t.slice(0, 300);
+      t = (cut.replace(/\s+\S*$/, '').trim() || cut).trim();
+    }
+    return t;
+  },
+
+  // Bug K1 skip predicate for question text. TRUE (= unusable, skip) when the
+  // text is empty, matches ^[a-z_\-\[\]0-9]+$ (DOM-name-shaped), contains
+  // `[field0]`, or equals the field's name/id. NOTE: no substring matching —
+  // a real question like "What is your current location?" must pass.
+  isDomIdentifier(text, field) {
+    const t = String(text == null ? '' : text).trim();
+    if (!t) return true;
+    if (/^[a-z_\-\[\]0-9]+$/i.test(t)) return true;
+    if (/\[field\d*\]/i.test(t)) return true;
+    const el = (field && field.el) || null;
+    if (el) {
+      const name = (el.name || '').trim();
+      const id = (el.id || '').trim();
+      if (name && t === name) return true;
+      if (id && t === id) return true;
+    }
+    return false;
+  },
+
+  // ── Bug K2/K3: tolerant read-back verification ──────────────────────
+  // A fill is verified by RE-READING the field, not by trusting the setter.
+  // The read-back is polled and compared NORMALIZED: spaces, dashes, parens
+  // and dots removed, lowercased. Two live failures this fixes:
+  //   K2 Lever "Current location": the page framework commits the value after
+  //      the setter returns — one immediate read saw "" and the fill was
+  //      reported as "fill rejected: current location".
+  //   K3 Greenhouse phone: an input mask reformats "+33753878537" to
+  //      "+33 7 53 78 85 37" asynchronously — a reformatted value must not be
+  //      an error, but it is still a real read-back comparison.
+  //   K2 Lever location: the suggestion list renders "Gdańsk, Poland" while the
+  //      profile holds ASCII "Gdansk" — diacritics are folded so the suggestion
+  //      matches (and so the read-back of the clicked suggestion verifies).
+  normalizeFieldValue(v) {
+    return String(v == null ? '' : v)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\s\-().]/g, '')
+      .toLowerCase();
+  },
+
+  // RULE (K3): poll up to 3 × 150 ms before declaring failure; never assume
+  // success. Match = exact normalized equality, OR the live value starts with
+  // the wanted value (>= 4 chars) — autocomplete widgets append context
+  // ("Gdansk, Poland") when they commit a suggestion. Anything else fails.
+  async verifyFieldValue(el, value, attempts = 3, delayMs = 150) {
+    const want = this.normalizeFieldValue(value);
+    const match = () => {
+      const live = this.normalizeFieldValue(el.value);
+      if (live === want) return true;
+      return want.length >= 4 && live.startsWith(want);
+    };
+    for (let i = 0; i < attempts; i++) {
+      if (match()) return true;
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
+    }
+    return match();
+  },
+
   // ── Step 6: The router ──────────────────────────────────────────
   // Called by content.js for each field that needs filling.
   // Inspects the element type and routes to the right strategy.
@@ -538,7 +712,8 @@ const FormDetector = {
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
         await new Promise(r => setTimeout(r, 200));
-        if (el.value === value) {
+        // [FIX K2/K3] polled + normalized read-back instead of one exact read
+        if (await this.verifyFieldValue(el, value)) {
           console.log(`JC: fillField [${fieldLabel}] → paste OK`);
           el.dataset.jcOriginal = value;
           return true;
@@ -560,7 +735,8 @@ const FormDetector = {
         }
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.blur();
-        if (el.value === value) {
+        // [FIX K2/K3] polled + normalized read-back
+        if (await this.verifyFieldValue(el, value)) {
           console.log(`JC: fillField [${fieldLabel}] → char-by-char fallback OK`);
           el.dataset.jcOriginal = value;
           return true;
@@ -588,7 +764,8 @@ const FormDetector = {
       el.dispatchEvent(new Event('change', { bubbles: true }));
       el.blur();
       await new Promise(r => setTimeout(r, 50));
-      if (el.value === value) {
+      // [FIX K2/K3] polled (3 × 150 ms) + normalized comparison
+      if (await this.verifyFieldValue(el, value)) {
         console.log(`JC: fillField [${fieldLabel}] → direct assignment OK`);
         el.dataset.jcOriginal = value;
         return true;
@@ -612,7 +789,8 @@ const FormDetector = {
       el.dispatchEvent(new Event('change', { bubbles: true }));
       el.blur();
       await new Promise(r => setTimeout(r, 50));
-      if (el.value === value) {
+      // [FIX K2/K3] polled (3 × 150 ms) + normalized comparison
+      if (await this.verifyFieldValue(el, value)) {
         console.log(`JC: fillField [${fieldLabel}] → native setter OK`);
         el.dataset.jcOriginal = value;
         return true;
@@ -621,8 +799,129 @@ const FormDetector = {
     } catch(e) {
       console.log(`JC: fillField [${fieldLabel}] → native setter error: ${e.message}`);
     }
-    
-    console.log(`JC: fillField [${fieldLabel}] → ALL strategies failed`);
+
+    // ── Strategy 3 (Bug K2): real editing-pipeline insert ────────────
+    // document.execCommand('insertText') goes through the browser's own input
+    // machinery, which is what frameworks listening for real text edits
+    // (Lever's location autocomplete, draft editors) accept. Needs focus and
+    // a collapsed selection over the current content.
+    try {
+      el.focus();
+      if (el.setSelectionRange) { try { el.setSelectionRange(0, el.value.length); } catch (e) { /* type without selection support */ } }
+      const okExec = document.execCommand ? document.execCommand('insertText', false, value) : false;
+      if (okExec) {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.blur();
+        if (await this.verifyFieldValue(el, value)) {
+          console.log(`JC: fillField [${fieldLabel}] → insertText OK`);
+          el.dataset.jcOriginal = value;
+          return true;
+        }
+        console.log(`JC: fillField [${fieldLabel}] → insertText set but verify failed (value='${el.value}')`);
+      }
+    } catch(e) {
+      console.log(`JC: fillField [${fieldLabel}] → insertText error: ${e.message}`);
+    }
+
+    // ── Strategy 4 (Bug K2): per-character keystroke simulation ────
+    // KeyboardEvent + InputEvent(insertText) per character — the closest to a
+    // human typing without CDP. Bounded: chars × 15 ms + one polled verify.
+    try {
+      el.focus();
+      el.value = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      for (let i = 0; i < value.length; i++) {
+        const ch = value[i];
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+        el.value = value.substring(0, i + 1);
+        el.dispatchEvent(new InputEvent('input', { type: 'input', inputType: 'insertText', data: ch, bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { key: ch, bubbles: true }));
+        await new Promise(r => setTimeout(r, 15));
+      }
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      if (await this.verifyFieldValue(el, value)) {
+        console.log(`JC: fillField [${fieldLabel}] → keystroke simulation OK`);
+        el.dataset.jcOriginal = value;
+        return true;
+      }
+    } catch(e) {
+      console.log(`JC: fillField [${fieldLabel}] → keystroke simulation error: ${e.message}`);
+    }
+
+    // ── Strategy 5 (Bug K2): autocomplete dropdown commit ──────────
+    // Some inputs are backed by an autocomplete widget that discards
+    // programmatic values in its own input handler. Live case: Lever's
+    // "Current location" (input[name=location], class location-input) shows
+    // "No location found. Try entering a different location" and clears the
+    // field within ~300 ms. Mimic a human: type a prefix, wait for the
+    // widget's result list (.dropdown-results in the same container), click
+    // the matching option — the widget then commits the value itself
+    // (including its hidden selectedLocation field).
+    try {
+      const scope = el.closest('li, .application-question, .field, .form-group, [class*="field"]') || el.parentElement;
+      const results = scope && scope.querySelector ? (scope.querySelector('.dropdown-results') || scope.querySelector('.dropdown-container')) : null;
+      if (results) {
+        el.focus();
+        el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        const prefix = value.substring(0, Math.min(4, value.length));
+        for (let i = 0; i < prefix.length; i++) {
+          el.value = prefix.substring(0, i + 1);
+          el.dispatchEvent(new InputEvent('input', { type: 'input', inputType: 'insertText', data: prefix[i], bubbles: true }));
+          await new Promise(r => setTimeout(r, 60));
+        }
+        const wanted = this.normalizeFieldValue(value);
+        let option = null;
+        for (let i = 0; i < 16 && !option; i++) { // poll ≤ 4 s (network-backed geocoders)
+          await new Promise(r => setTimeout(r, 250));
+          const items = Array.from(results.querySelectorAll('*')).filter(n => n.children.length === 0 && (n.textContent || '').trim());
+          option = items.find(n => this.normalizeFieldValue(n.textContent).startsWith(wanted)) ||
+                   items.find(n => this.normalizeFieldValue(n.textContent).includes(wanted));
+        }
+        if (option) {
+          option.click();
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 200));
+          if (await this.verifyFieldValue(el, value)) {
+            console.log(`JC: fillField [${fieldLabel}] → autocomplete option OK (value='${el.value}')`);
+            el.dataset.jcOriginal = value;
+            return true;
+          }
+          console.log(`JC: fillField [${fieldLabel}] → autocomplete option clicked but verify failed (value='${el.value}')`);
+        } else {
+          console.log(`JC: fillField [${fieldLabel}] → no autocomplete option for "${value}" after 2s`);
+        }
+      }
+    } catch(e) {
+      console.log(`JC: fillField [${fieldLabel}] → autocomplete error: ${e.message}`);
+    }
+
+    // ── Strategy 6 (Bug K2): silent native-setter commit ────────────
+    // Last resort for widgets whose input handler clears programmatic values:
+    // commit through the native setter and dispatch ONLY `change` (no `input`,
+    // no blur) — exactly the manual technique observed to stick on the live
+    // page. Verified with the same polled, normalized read-back; never assumed.
+    try {
+      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+      el.focus();
+      nativeSetter.call(el, value);
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      if (await this.verifyFieldValue(el, value, 2, 100)) {
+        console.log(`JC: fillField [${fieldLabel}] → silent commit OK (value='${el.value}')`);
+        el.dataset.jcOriginal = value;
+        return true;
+      }
+      console.log(`JC: fillField [${fieldLabel}] → silent commit failed (value='${el.value}')`);
+    } catch(e) {
+      console.log(`JC: fillField [${fieldLabel}] → silent commit error: ${e.message}`);
+    }
+
+    // Bug K2/K3 diagnostic: expose what the read-back actually contained so a
+    // rejection is diagnosable from the console (normalized comparison).
+    console.log(`JC: fillField [${fieldLabel}] → ALL strategies failed (live='${String(el.value).slice(0, 80)}' wanted='${String(value).slice(0, 80)}' normalizedLive='${this.normalizeFieldValue(el.value)}' normalizedWanted='${this.normalizeFieldValue(value)}')`);
     return false;
   },
 };
