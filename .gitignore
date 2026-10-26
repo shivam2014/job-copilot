@@ -17,6 +17,7 @@ test/
 
 # Screenshots
 *.png
+!assets/readme/*.png
 
 # macOS
 .DS_Store

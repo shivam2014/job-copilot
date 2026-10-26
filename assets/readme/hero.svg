@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="360" viewBox="0 0 1200 360"
+     role="img" aria-labelledby="heroTitle heroDesc">
+  <title id="heroTitle">Job Copilot — a Chrome extension that fills job applications from your resume</title>
+  <desc id="heroDesc">Job Copilot extracts a profile from your PDF resume with an LLM endpoint you configure, you review and edit that profile, and then it fills application forms for you to check and submit yourself. Greenhouse, Lever and Oracle CX are verified live.</desc>
+
+  <rect width="1200" height="360" rx="20" fill="#FFFFFF"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="358.5" rx="20" fill="none" stroke="#E5E7EB" stroke-width="1.5"/>
+
+  <g id="title-block" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="56" y="88" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="18" letter-spacing="2" fill="#6B7280">CHROME EXTENSION &#183; BRING YOUR OWN LLM</text>
+
+    <text x="56" y="156" font-size="60" font-weight="650" fill="#111827">Job Copilot</text>
+
+    <text x="56" y="200" font-size="21" fill="#111827">Autofill job applications from your resume,</text>
+    <text x="56" y="228" font-size="21" fill="#6B7280">with an endpoint you choose.</text>
+
+    <text x="56" y="322" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="18" fill="#6B7280">Greenhouse &#183; Lever &#183; Oracle CX &#183; MIT</text>
+  </g>
+
+  <g id="flow">
+    <rect x="616" y="52" width="528" height="256" rx="12" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="1.5"/>
+
+    <line x1="650" y1="104" x2="650" y2="240" stroke="#DBEAFE" stroke-width="2"/>
+
+    <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+      <circle cx="650" cy="104" r="13" fill="#2563EB"/>
+      <text x="650" y="110" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+            font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+      <text x="680" y="102" font-size="20" font-weight="600" fill="#111827">Extract</text>
+      <text x="680" y="126" font-size="18" fill="#6B7280">PDF resume to profile fields, by your LLM</text>
+
+      <circle cx="650" cy="172" r="13" fill="#2563EB"/>
+      <text x="650" y="178" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+            font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">2</text>
+      <text x="680" y="170" font-size="20" font-weight="600" fill="#111827">Review</text>
+      <text x="680" y="194" font-size="18" fill="#6B7280">you edit it; it wins over learned values</text>
+
+      <circle cx="650" cy="240" r="13" fill="#15803D"/>
+      <text x="650" y="246" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+            font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle">3</text>
+      <text x="680" y="238" font-size="20" font-weight="600" fill="#111827">Fill, then you submit</text>
+      <text x="680" y="262" font-size="18" fill="#6B7280">nothing is ever submitted for you</text>
+    </g>
+  </g>
+</svg>
